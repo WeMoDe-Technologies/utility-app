@@ -26,7 +26,11 @@ import { spacing, radius, typography } from '@/theme';
 import type { CalculatorState } from '@/types';
 
 const { width } = Dimensions.get('window');
-const BTN_SIZE = Math.floor((width - spacing.base * 2 - spacing.sm * 3) / 4);
+
+// Gap between buttons
+const BTN_GAP = spacing.sm;
+// 4 buttons per row, 3 gaps between them, padding on both sides
+const BTN_SIZE = Math.floor((width - spacing.base * 2 - BTN_GAP * 3) / 4);
 
 const DEFAULT_STATE: CalculatorState = {
   expression: '',
@@ -34,6 +38,8 @@ const DEFAULT_STATE: CalculatorState = {
   history: [],
 };
 
+// Last row uses a different layout: '0' is wide, then '.', '⌫', '='
+// We model this explicitly so we can flex them correctly.
 const BUTTONS = [
   ['AC', '+/-', '%', '÷'],
   ['7', '8', '9', '×'],
@@ -105,7 +111,6 @@ export default function CalculatorScreen() {
           }
 
           default: {
-            // Operator or number
             const isOperator = ['÷', '×', '−', '+'].includes(btn);
             if (isOperator) {
               const lastChar = expression.slice(-1);
@@ -116,17 +121,13 @@ export default function CalculatorScreen() {
               return { ...prev, expression: newExpr };
             }
 
-            // Decimal
             if (btn === '.') {
               const parts = expression.split(/[÷×−+]/);
               const lastPart = parts[parts.length - 1];
               if (lastPart.includes('.')) return prev;
-
-              const newExpr = expression + btn;
-              return { ...prev, expression: newExpr };
+              return { ...prev, expression: expression + btn };
             }
 
-            // number
             return { ...prev, expression: expression + btn };
           }
         }
@@ -150,7 +151,7 @@ export default function CalculatorScreen() {
           <Text
             style={[
               styles.expression,
-              { color: colors.text, maxWidth: '100%' },
+              { color: colors.text },
               displayValue.length > 20 ? { fontSize: typography.sizes.sm } : {},
             ]}
             numberOfLines={1}
@@ -163,14 +164,18 @@ export default function CalculatorScreen() {
           <Text
             style={[
               styles.result,
-              { color: colors.text, maxWidth: '100%' },
+              { color: colors.text },
               isLong ? { fontSize: typography.sizes.lg - 6 } : {},
             ]}
             numberOfLines={1}
             ellipsizeMode="head"
             allowFontScaling={false}
           >
-            {state.expression ? (state.result !== '0' ? state.result : state.expression) : state.result}
+            {state.expression
+              ? state.result !== '0'
+                ? state.result
+                : state.expression
+              : state.result}
           </Text>
         </View>
 
@@ -186,10 +191,18 @@ export default function CalculatorScreen() {
                   }
                   style={[
                     styles.historyChip,
-                    { backgroundColor: colors.card, borderColor: colors.border, maxWidth: width - spacing.base * 2 },
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      maxWidth: width - spacing.base * 2,
+                    },
                   ]}
                 >
-                  <Text style={[styles.historyExpr, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
+                  <Text
+                    style={[styles.historyExpr, { color: colors.text }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
                     {h.expression}
                   </Text>
                   <Text style={[styles.historyResult, { color: colors.text }]}>
@@ -202,22 +215,61 @@ export default function CalculatorScreen() {
         )}
 
         {/* Keypad */}
-        <View style={[styles.keypad]}>
-          {BUTTONS.map((row, ri) => (
-            <View key={ri} style={styles.row}>
-              {row.map((btn) => (
-                <CalcButton
-                  key={btn + ri}
-                  label={btn}
-                  onPress={() => handleButton(btn)}
-                  colors={colors}
-                  isOperator={['÷', '×', '−', '+', '='].includes(btn)}
-                  isUtility={['AC', '+/-', '%'].includes(btn)}
-                  isWide={btn === '0'}
-                />
-              ))}
-            </View>
-          ))}
+        <View style={styles.keypad}>
+          {BUTTONS.map((row, ri) => {
+            const isLastRow = ri === BUTTONS.length - 1;
+
+            if (isLastRow) {
+              // Last row: '0' wide (2 cols), then '.', '⌫', '=' each normal
+              const [zero, dot, back, eq] = row;
+              return (
+                <View key={ri} style={styles.row}>
+                  {/* Wide '0' button */}
+                  <CalcButton
+                    key="0"
+                    label={zero}
+                    onPress={() => handleButton(zero)}
+                    colors={colors}
+                    isWide={false}
+                  />
+                  <CalcButton
+                    key={dot}
+                    label={dot}
+                    onPress={() => handleButton(dot)}
+                    colors={colors}
+                  />
+                  <CalcButton
+                    key={back}
+                    label={back}
+                    onPress={() => handleButton(back)}
+                    colors={colors}
+                  />
+                  <CalcButton
+                    key={eq}
+                    label={eq}
+                    onPress={() => handleButton(eq)}
+                    colors={colors}
+                    isOperator
+                  />
+                </View>
+              );
+            }
+
+            return (
+              <View key={ri} style={styles.row}>
+                {row.map((btn) => (
+                  <CalcButton
+                    key={btn + ri}
+                    label={btn}
+                    onPress={() => handleButton(btn)}
+                    colors={colors}
+                    isOperator={['÷', '×', '−', '+', '='].includes(btn)}
+                    isUtility={['AC', '+/-', '%'].includes(btn)}
+                  />
+                ))}
+              </View>
+            );
+          })}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -250,25 +302,38 @@ export default function CalculatorScreen() {
       onPress();
     };
 
-    const bgColor = isOperator ? '#6366F1' : isUtility ? colors.muted : colors.card;
+    const bgColor = isOperator
+      ? '#6366F1'
+      : isUtility
+      ? colors.muted
+      : colors.card;
     const textColor = isOperator ? '#fff' : colors.text;
 
+    // Wide button = BTN_SIZE * 2 + one gap (the gap that would have been between the two cells)
+    const btnWidth = isWide ? BTN_SIZE * 2 + BTN_GAP : BTN_SIZE;
+
     return (
-      <Animated.View entering={FadeInDown} style={[animStyle, isWide ? { flexBasis: (BTN_SIZE * 2) + spacing.sm, flexGrow: 1 } : { width: BTN_SIZE }]}>
+      <Animated.View
+        entering={FadeInDown}
+        style={[animStyle, { width: btnWidth }]}
+      >
         <Pressable
           onPress={handlePress}
           android_ripple={{ color: colors.border }}
           style={[
             styles.btn,
             {
+              width: btnWidth,
               backgroundColor: bgColor,
               borderColor: colors.border,
-              width: isWide ? undefined : BTN_SIZE,
             },
-            isWide ? styles.wideBtn : undefined,
           ]}
         >
-          <Text style={[styles.btnLabel, { color: textColor }]} allowFontScaling={false} numberOfLines={1}>
+          <Text
+            style={[styles.btnLabel, { color: textColor }]}
+            allowFontScaling={false}
+            numberOfLines={1}
+          >
             {label}
           </Text>
         </Pressable>
@@ -279,6 +344,7 @@ export default function CalculatorScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+
   display: {
     margin: spacing.base,
     borderRadius: radius.xl,
@@ -297,6 +363,7 @@ const styles = StyleSheet.create({
     letterSpacing: -2,
     fontSize: typography.sizes.xxl || 36,
   },
+
   historyStrip: {
     paddingHorizontal: spacing.base,
     paddingBottom: spacing.sm,
@@ -316,16 +383,19 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.semibold,
   },
+
   keypad: {
     paddingHorizontal: spacing.base,
     paddingBottom: spacing.base,
-    justifyContent: 'flex-end',
   },
   row: {
     flexDirection: 'row',
-    marginBottom: spacing.sm,
+    // Use gap so spacing is uniform and buttons don't need manual margin math
+    gap: BTN_GAP,
+    marginBottom: BTN_GAP,
     alignItems: 'center',
   },
+
   btn: {
     height: BTN_SIZE,
     borderRadius: radius.xl,
@@ -336,10 +406,5 @@ const styles = StyleSheet.create({
   btnLabel: {
     fontSize: typography.sizes.xl,
     fontWeight: typography.weights.semibold,
-  },
-  wideBtn: {
-    borderRadius: radius.xl,
-    height: BTN_SIZE,
-    justifyContent: 'center',
   },
 });

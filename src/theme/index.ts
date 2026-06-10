@@ -195,3 +195,7 @@ export const shadows = {
     elevation: 10,
   },
 };
+
+// ─── Re-export new theme registry for convenience ──────────────────────────
+export { THEMES, DARK_THEMES, LIGHT_THEMES, getThemeById, DEFAULT_THEME_ID } from './themes';
+export type { ThemeDefinition } from './themes';

@@ -5,6 +5,7 @@ import {
   View,
   Pressable,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,7 +30,7 @@ export function UtilityHeader({
   accentColor,
   onClearData,
 }: UtilityHeaderProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { top } = useSafeAreaInsets();
   const { isFavourite, toggleFavourite } = useFavouritesStore();
   const { hapticFeedback } = usePreferencesStore();
@@ -47,7 +48,14 @@ export function UtilityHeader({
 
   const handleClear = () => {
     if (hapticFeedback) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    onClearData?.();
+    Alert.alert(
+      'Clear Data',
+      'This will reset all saved state for this utility.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear', style: 'destructive', onPress: onClearData },
+      ]
+    );
   };
 
   return (
@@ -62,34 +70,30 @@ export function UtilityHeader({
         shadows.sm,
       ]}
     >
-      <StatusBar
-        barStyle={colors.bg === '#0A0A0F' ? 'light-content' : 'dark-content'}
-      />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      {/* Back button */}
-      <Pressable onPress={handleBack} style={styles.iconBtn} hitSlop={12}>
-        <Ionicons name="chevron-back" size={24} color={colors.text} />
+      {/* Back */}
+      <Pressable onPress={handleBack} style={[styles.iconBtn, { backgroundColor: colors.muted }]} hitSlop={10}>
+        <Ionicons name="chevron-back" size={20} color={colors.text} />
       </Pressable>
 
       {/* Title */}
       <View style={styles.titleContainer}>
-        <View
-          style={[styles.titleDot, { backgroundColor: accentColor }]}
-        />
+        <View style={[styles.titleDot, { backgroundColor: accentColor }]} />
         <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
       </View>
 
       {/* Right actions */}
       <View style={styles.rightActions}>
         {onClearData && (
-          <Pressable onPress={handleClear} style={styles.iconBtn} hitSlop={8}>
-            <Ionicons name="trash-outline" size={20} color={colors.textSecondary} />
+          <Pressable onPress={handleClear} style={[styles.iconBtn, { backgroundColor: colors.muted }]} hitSlop={8}>
+            <Ionicons name="trash-outline" size={17} color={colors.textSecondary} />
           </Pressable>
         )}
-        <Pressable onPress={handleFav} style={styles.iconBtn} hitSlop={8}>
+        <Pressable onPress={handleFav} style={[styles.iconBtn, { backgroundColor: favourite ? '#F59E0B18' : colors.muted }]} hitSlop={8}>
           <Ionicons
             name={favourite ? 'star' : 'star-outline'}
-            size={20}
+            size={17}
             color={favourite ? '#F59E0B' : colors.textSecondary}
           />
         </Pressable>
@@ -105,11 +109,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base,
     paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: spacing.sm,
   },
   iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -118,7 +123,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginLeft: spacing.xs,
   },
   titleDot: {
     width: 8,

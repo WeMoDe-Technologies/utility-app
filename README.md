@@ -236,3 +236,96 @@ Then update `useUtilityState.ts` to be async (use `useEffect` for hydration).
 ## License
 
 MIT
+
+---
+
+## Theme System (v1.1)
+
+### 12 Built-in Themes
+
+| # | Theme | Mode | Accent | Description |
+|---|---|---|---|---|
+| 1 | 🌑 Midnight | Dark | Indigo `#6366F1` | Deep dark with indigo accent (default) |
+| 2 | ☀️ Ivory | Light | Indigo `#6366F1` | Clean light with indigo accent |
+| 3 | ⬛ Obsidian | Dark | Indigo `#6366F1` | True black, OLED optimised |
+| 4 | 🌌 Aurora | Dark | Emerald `#10B981` | Dark canvas with emerald glow |
+| 5 | 🔥 Ember | Dark | Rose `#F43F5E` | Warm dark with rose fire tones |
+| 6 | 🌠 Galaxy | Dark | Violet `#8B5CF6` | Deep space with violet nebula |
+| 7 | 🌊 Ocean | Dark | Cyan `#06B6D4` | Deep sea dark with cyan waves |
+| 8 | 🏜️ Sand | Light | Amber `#F59E0B` | Warm parchment with amber tones |
+| 9 | 🌸 Rose | Light | Pink `#EC4899` | Soft blush light with pink accent |
+| 10 | 🌿 Forest | Light | Emerald `#10B981` | Fresh mint light with teal accent |
+| 11 | 🩶 Slate | Dark | Sky `#0EA5E9` | Cool blue-gray dark with sky accent |
+| 12 | ⚡ Neon | Dark | Lime `#84CC16` | Cyberpunk dark with electric lime |
+
+### Theme Architecture
+
+```
+src/theme/
+├── index.ts          # Design tokens + re-exports
+├── themes.ts         # ThemeDefinition × 12, THEMES[], DARK_THEMES[], LIGHT_THEMES[]
+└── ThemeProvider.tsx # Context with themeId, colors, isDark, theme
+```
+
+### Using themes in components
+
+```tsx
+import { useTheme } from '@/theme/ThemeProvider';
+
+function MyComponent() {
+  const { colors, isDark, themeId, theme } = useTheme();
+  return (
+    <View style={{ backgroundColor: colors.bg }}>
+      <Text style={{ color: colors.text }}>Hello</Text>
+      <View style={{ backgroundColor: colors.accent }}>...</View>
+    </View>
+  );
+}
+```
+
+### Adding a custom theme
+
+In `src/theme/themes.ts`, add a new entry to the `THEMES` array:
+
+```typescript
+const myTheme: ThemeDefinition = {
+  id: 'my-theme',
+  name: 'My Theme',
+  description: 'Custom theme description',
+  emoji: '🎨',
+  isDark: true,
+  colors: {
+    bg: '#...',
+    surface: '#...',
+    card: '#...',
+    border: '#...',
+    muted: '#...',
+    subtle: '#...',
+    text: '#...',
+    textSecondary: '#...',
+    textTertiary: '#...',
+    accent: '#...',
+    accentLight: 'rgba(..., 0.15)',
+  },
+  preview: {
+    bg: '#...',
+    surface: '#...',
+    accent: '#...',
+    card: '#...',
+  },
+};
+```
+
+### Theme Picker UI
+
+- Lives in **Settings → Choose Theme**
+- Filterable by All / Dark / Light tabs
+- 3-column grid with live mini-app previews
+- Each card shows a simulated home screen with the theme applied
+- Active theme highlighted with accent-coloured border + glow shadow
+- Tap to instantly switch — persisted to MMKV
+
+### Theme Preview Screen
+
+`/theme-preview` — reachable via "Preview" button in Settings banner.
+Shows the active theme applied to: typography scale, color token swatches, buttons, utility cards, input, and chips.

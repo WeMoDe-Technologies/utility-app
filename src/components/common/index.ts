@@ -12,3 +12,4 @@ export { ResultDisplay } from './ResultDisplay';
 export { ProgressRing } from './ProgressRing';
 export { SettingRow } from './SettingRow';
 export { QuickActionsSheet } from './QuickActionsSheet';
+export { ThemePicker } from './ThemePicker';

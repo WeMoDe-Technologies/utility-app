@@ -11,16 +11,11 @@ export interface UtilityDefinition {
   id: string;
   title: string;
   description: string;
-  icon: string; // @expo/vector-icons name
-  iconFamily:
-    | 'Ionicons'
-    | 'MaterialCommunityIcons'
-    | 'FontAwesome5'
-    | 'Feather'
-    | 'AntDesign';
+  icon: string;
+  iconFamily: 'Ionicons' | 'MaterialCommunityIcons' | 'FontAwesome5' | 'Feather' | 'AntDesign';
   route: string;
   category: UtilityCategory;
-  color: string; // accent color
+  color: string;
   supportsPersistence: boolean;
   supportsHistory: boolean;
   supportsFavourite: boolean;
@@ -29,38 +24,29 @@ export interface UtilityDefinition {
 // ─── State Management Types ───────────────────────────────────────────────
 export interface RecentEntry {
   utilityId: string;
-  lastUsedAt: number; // timestamp
+  lastUsedAt: number;
   useCount: number;
 }
 
-export interface FavouritesState {
-  ids: string[];
-  addFavourite: (id: string) => void;
-  removeFavourite: (id: string) => void;
-  isFavourite: (id: string) => boolean;
-  toggleFavourite: (id: string) => void;
-}
-
-export interface RecentsState {
-  entries: RecentEntry[];
-  recordUsage: (id: string) => void;
-  clearRecent: () => void;
-  getRecent: (limit?: number) => RecentEntry[];
-}
-
-export interface PreferencesState {
-  theme: 'light' | 'dark' | 'system';
-  hapticFeedback: boolean;
-  showUsageCount: boolean;
-  setTheme: (theme: 'light' | 'dark' | 'system') => void;
-  setHapticFeedback: (enabled: boolean) => void;
-  setShowUsageCount: (show: boolean) => void;
-}
-
-// ─── Utility-Specific State Types ─────────────────────────────────────────
+// ─── Calculator with memory ────────────────────────────────────────────────
 export interface CalculatorState {
+  display: string;           // what's shown in main display
+  expression: string;        // full expression string being built
+  result: string;            // last computed result
+  memory: number;            // M register value
+  hasMemory: boolean;        // whether memory has a stored value
+  justEvaluated: boolean;    // true right after pressing =
+  history: Array<{
+    expression: string;
+    result: string;
+    timestamp: number;
+  }>;
+}
+
+export interface ScientificCalculatorState {
   expression: string;
   result: string;
+  isRadians: boolean;
   history: Array<{ expression: string; result: string; timestamp: number }>;
 }
 
@@ -97,7 +83,7 @@ export interface NotesState {
 }
 
 export interface PomodoroState {
-  workDuration: number; // minutes
+  workDuration: number;
   breakDuration: number;
   longBreakDuration: number;
   currentPhase: 'work' | 'break' | 'longBreak';
@@ -180,14 +166,6 @@ export interface GSTState {
   totalAmount: string;
 }
 
-export interface ScientificCalculatorState {
-  expression: string;
-  result: string;
-  isRadians: boolean;
-  history: Array<{ expression: string; result: string; timestamp: number }>;
-}
-
-// ─── Generic Utility Cache ─────────────────────────────────────────────────
 export type UtilityStateMap = {
   calculator: CalculatorState;
   scientificCalculator: ScientificCalculatorState;

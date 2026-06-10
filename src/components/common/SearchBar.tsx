@@ -28,41 +28,30 @@ export function SearchBar({
 
   const handleFocus = () => {
     setIsFocused(true);
-    Animated.timing(borderAnim, {
-      toValue: 1,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
+    Animated.timing(borderAnim, { toValue: 1, duration: 180, useNativeDriver: false }).start();
   };
 
   const handleBlur = () => {
     setIsFocused(false);
-    Animated.timing(borderAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
+    Animated.timing(borderAnim, { toValue: 0, duration: 180, useNativeDriver: false }).start();
   };
 
   const borderColor = borderAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [colors.border, '#6366F1'],
+    outputRange: [colors.border, colors.accent],
   });
 
   return (
     <Animated.View
       style={[
         styles.container,
-        {
-          backgroundColor: colors.card,
-          borderColor,
-        },
+        { backgroundColor: colors.card, borderColor },
       ]}
     >
       <Ionicons
         name="search"
-        size={18}
-        color={isFocused ? '#6366F1' : colors.textTertiary}
+        size={17}
+        color={isFocused ? colors.accent : colors.textTertiary}
       />
       <TextInput
         ref={inputRef}
@@ -78,11 +67,7 @@ export function SearchBar({
         onBlur={handleBlur}
       />
       {value.length > 0 && (
-        <Pressable
-          onPress={() => onChangeText('')}
-          hitSlop={8}
-          style={styles.clearBtn}
-        >
+        <Pressable onPress={() => onChangeText('')} hitSlop={10}>
           <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
         </Pressable>
       )}
@@ -104,8 +89,5 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: typography.sizes.base,
     fontWeight: typography.weights.medium,
-  },
-  clearBtn: {
-    padding: 2,
   },
 });

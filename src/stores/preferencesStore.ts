@@ -1,48 +1,65 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { StorageKeys, loadJSON, saveJSON } from '@/utils/storage';
+import { loadJSON, saveJSON, StorageKeys } from '@/utils/storage';
+import { DEFAULT_THEME_ID } from '@/theme/themes';
 
 interface PreferencesState {
-  theme: 'light' | 'dark' | 'system';
+  themeId: string;
+  /** Legacy field — kept for backward compat, maps to themeId internally */
+  theme: string;
   hapticFeedback: boolean;
   showUsageCount: boolean;
-  setTheme: (theme: 'light' | 'dark' | 'system') => void;
+  setThemeId: (id: string) => void;
+  /** @deprecated Use setThemeId instead */
+  setTheme: (theme: string) => void;
   setHapticFeedback: (enabled: boolean) => void;
   setShowUsageCount: (show: boolean) => void;
   reset: () => void;
 }
 
 const DEFAULTS = {
-  theme: 'system' as const,
+  themeId: DEFAULT_THEME_ID,
+  theme: DEFAULT_THEME_ID,
   hapticFeedback: true,
   showUsageCount: true,
 };
 
-export const usePreferencesStore = create<PreferencesState>()((set) => {
-  // Hydrate from storage
+export const usePreferencesStore = create<PreferencesState>()((set, get) => {
   const saved = loadJSON(StorageKeys.PREFERENCES, DEFAULTS);
 
-  const save = (partial: Partial<typeof DEFAULTS>) => {
+  // Migrate: if old 'theme' value is 'system'|'light'|'dark', map to new themeId
+  let migratedThemeId = saved.themeId ?? saved.theme ?? DEFAULT_THEME_ID;
+  if (migratedThemeId === 'system') migratedThemeId = DEFAULT_THEME_ID;
+  if (migratedThemeId === 'light') migratedThemeId = 'ivory';
+  if (migratedThemeId === 'dark') migratedThemeId = 'midnight';
+
+  const persist = (partial: Partial<typeof DEFAULTS>) => {
     const current = loadJSON(StorageKeys.PREFERENCES, DEFAULTS);
     saveJSON(StorageKeys.PREFERENCES, { ...current, ...partial });
   };
 
   return {
     ...saved,
+    themeId: migratedThemeId,
+    theme: migratedThemeId,
+
+    setThemeId: (id) => {
+      set({ themeId: id, theme: id });
+      persist({ themeId: id, theme: id });
+    },
 
     setTheme: (theme) => {
-      set({ theme });
-      save({ theme });
+      // Alias for backward compat
+      get().setThemeId(theme);
     },
 
     setHapticFeedback: (hapticFeedback) => {
       set({ hapticFeedback });
-      save({ hapticFeedback });
+      persist({ hapticFeedback });
     },
 
     setShowUsageCount: (showUsageCount) => {
       set({ showUsageCount });
-      save({ showUsageCount });
+      persist({ showUsageCount });
     },
 
     reset: () => {

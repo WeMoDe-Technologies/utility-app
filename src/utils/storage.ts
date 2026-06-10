@@ -1,9 +1,29 @@
-import { MMKV } from 'react-native-mmkv';
+// import { MMKV } from 'react-native-mmkv';
 
-export const storage = new MMKV({
-  id: 'utility-kit-storage',
-  encryptionKey: 'uk-secure-key-2024',
-});
+// export const storage = new MMKV({
+//   id: 'utility-kit-storage',
+//   encryptionKey: 'uk-secure-key-2024',
+// });
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+export const storage = {
+  setItem: async (key: string, value: string) => {
+    await AsyncStorage.setItem(key, value);
+  },
+
+  getItem: async (key: string) => {
+    return await AsyncStorage.getItem(key);
+  },
+
+  removeItem: async (key: string) => {
+    await AsyncStorage.removeItem(key);
+  },
+
+  clear: async () => {
+    await AsyncStorage.clear();
+  },
+};
 
 // ─── Typed storage helpers ─────────────────────────────────────────────────
 export const StorageKeys = {

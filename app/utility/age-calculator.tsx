@@ -60,6 +60,21 @@ function getZodiac(month: number, day: number): string {
   return '♑ Capricorn';
 }
 
+const formatDateInput = (value: string) => {
+  // Keep only numbers
+  const cleaned = value.replace(/\D/g, '').slice(0, 8);
+
+  if (cleaned.length <= 4) {
+    return cleaned;
+  }
+
+  if (cleaned.length <= 6) {
+    return `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
+  }
+
+  return `${cleaned.slice(0, 4)}-${cleaned.slice(4, 6)}-${cleaned.slice(6)}`;
+};
+
 function calculateAge(birthStr: string, targetStr: string): AgeResult | null {
   if (!birthStr || !targetStr) return null;
   const birth = new Date(birthStr);
@@ -231,7 +246,7 @@ function DateInput({ label, value, onChange, colors, accent }: any) {
       <TextInput
         style={[styles.dateInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
         value={value}
-        onChangeText={onChange}
+        onChangeText={(text) => onChange(formatDateInput(text))}
         placeholder="YYYY-MM-DD"
         placeholderTextColor={colors.textTertiary}
         keyboardType="numbers-and-punctuation"

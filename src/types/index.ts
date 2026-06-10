@@ -12,7 +12,7 @@ export interface UtilityDefinition {
   title: string;
   description: string;
   icon: string;
-  iconFamily: 'Ionicons' | 'MaterialCommunityIcons' | 'FontAwesome5' | 'Feather' | 'AntDesign';
+  iconFamily: 'Ionicons' | 'MaterialCommunityIcons' | 'MaterialIcons' | 'FontAwesome5' | 'Feather' | 'AntDesign';
   route: string;
   category: UtilityCategory;
   color: string;

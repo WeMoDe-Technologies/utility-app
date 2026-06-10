@@ -4,23 +4,36 @@
 //   id: 'utility-kit-storage',
 //   encryptionKey: 'uk-secure-key-2024',
 // });
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const storage = {
-  setItem: async (key: string, value: string) => {
-    await AsyncStorage.setItem(key, value);
+  set: async (key: string, value: any) => {
+    try {
+      const serialized =
+        typeof value === 'string'
+          ? value
+          : JSON.stringify(value);
+
+      await AsyncStorage.setItem(key, serialized);
+    } catch (error) {
+      console.warn('[Storage] Failed to save', key, error);
+    }
   },
 
-  getItem: async (key: string) => {
-    return await AsyncStorage.getItem(key);
+  getString: async (key: string) => {
+    try {
+      return await AsyncStorage.getItem(key);
+    } catch (error) {
+      console.warn('[Storage] Failed to load', key, error);
+      return null;
+    }
   },
 
-  removeItem: async (key: string) => {
+  delete: async (key: string) => {
     await AsyncStorage.removeItem(key);
   },
 
-  clear: async () => {
+  clearAll: async () => {
     await AsyncStorage.clear();
   },
 };

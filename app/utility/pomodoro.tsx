@@ -274,21 +274,42 @@ export default function PomodoroScreen() {
           <DurationSetting
             label="Focus"
             value={state.workDuration}
-            onChange={(v) => setState((p) => ({ ...p, workDuration: v }))}
+            onChange={(v) =>
+              setState((p) => ({
+                ...p,
+                workDuration: v,
+                // If currently on the work phase, sync the countdown to the new duration
+                remainingSeconds: p.currentPhase === 'work' ? v * 60 : p.remainingSeconds,
+              }))
+            }
             colors={colors}
             accent="#EC4899"
           />
           <DurationSetting
             label="Break"
             value={state.breakDuration}
-            onChange={(v) => setState((p) => ({ ...p, breakDuration: v }))}
+            onChange={(v) =>
+              setState((p) => ({
+                ...p,
+                breakDuration: v,
+                // If currently on the break phase, sync the countdown to the new duration
+                remainingSeconds: p.currentPhase === 'break' ? v * 60 : p.remainingSeconds,
+              }))
+            }
             colors={colors}
             accent="#10B981"
           />
           <DurationSetting
             label="Long Break"
             value={state.longBreakDuration}
-            onChange={(v) => setState((p) => ({ ...p, longBreakDuration: v }))}
+            onChange={(v) =>
+              setState((p) => ({
+                ...p,
+                longBreakDuration: v,
+                // If currently on the longBreak phase, sync the countdown to the new duration
+                remainingSeconds: p.currentPhase === 'longBreak' ? v * 60 : p.remainingSeconds,
+              }))
+            }
             colors={colors}
             accent="#6366F1"
           />

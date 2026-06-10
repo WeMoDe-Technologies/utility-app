@@ -45,7 +45,7 @@ export const UTILITY_REGISTRY: UtilityDefinition[] = [
     title: 'Currency',
     description: 'Real-time currency conversion',
     icon: 'currency-exchange',
-    iconFamily: 'MaterialCommunityIcons',
+    iconFamily: 'MaterialIcons',
     route: '/utility/currency-converter',
     category: 'finance',
     color: '#10B981',

@@ -6,6 +6,8 @@ import {
   TextInput,
   Pressable,
   ScrollView,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -49,8 +51,8 @@ const UNIT_CATEGORIES: Record<
   temperature: {
     label: 'Temperature',
     units: {
-      c: { label: '°Celsius', toBase: 1 },
-      f: { label: '°Fahrenheit', toBase: 1 },
+      c: { label: 'Celsius', toBase: 1 },
+      f: { label: 'Fahrenheit', toBase: 1 },
       k: { label: 'Kelvin', toBase: 1 },
     },
   },
@@ -324,44 +326,90 @@ function UnitPicker({
   accent: string;
 }) {
   const [open, setOpen] = useState(false);
+  // Stores the screen-absolute position of the trigger button
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const btnRef = React.useRef<View>(null);
+
+  const handleOpen = () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    // Measure the button's position in the window (screen-absolute coords)
+    btnRef.current?.measureInWindow((x, y, width, height) => {
+      setDropdownPos({ top: y + height + 4, left: x, width });
+      setOpen(true);
+    });
+  };
 
   return (
     <View style={styles.pickerContainer}>
-      <Pressable
-        onPress={() => setOpen(!open)}
-        style={[
-          styles.pickerBtn,
-          { backgroundColor: accent + '20', borderColor: accent + '40' },
-        ]}
-      >
-        <Text style={[styles.pickerLabel, { color: accent }]}>
-          {units[selected]?.label ?? selected}
-        </Text>
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={accent} />
-      </Pressable>
-      {open && (
-        <View
+      {/* Trigger button — ref needed for measureInWindow */}
+      <View ref={btnRef} collapsable={false}>
+        <Pressable
+          onPress={handleOpen}
           style={[
-            styles.dropdown,
-            { backgroundColor: colors.card, borderColor: colors.border },
+            styles.pickerBtn,
+            { backgroundColor: accent + '20', borderColor: accent + '40' },
           ]}
         >
-          {Object.entries(units).map(([key, unit]) => (
-            <Pressable
-              key={key}
-              onPress={() => { onSelect(key); setOpen(false); }}
-              style={[
-                styles.dropdownItem,
-                { backgroundColor: key === selected ? accent + '15' : 'transparent' },
-              ]}
+          <Text style={[styles.pickerLabel, { color: accent }]}>
+            {units[selected]?.label ?? selected}
+          </Text>
+          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={accent} />
+        </Pressable>
+      </View>
+
+      {/* Dropdown rendered in a Modal so it escapes all parent clipping/overflow/zIndex stacks */}
+      <Modal
+        visible={open}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => setOpen(false)}
+      >
+        {/* Full-screen backdrop — tap outside to close */}
+        <TouchableWithoutFeedback onPress={() => setOpen(false)}>
+          <View style={styles.modalBackdrop} />
+        </TouchableWithoutFeedback>
+
+        {/* Dropdown list, positioned at measured screen coords */}
+        {dropdownPos && (
+          <View
+            style={[
+              styles.dropdown,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                top: dropdownPos.top,
+                left: dropdownPos.left,
+                width: dropdownPos.width,
+              },
+            ]}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: 200 }}
             >
-              <Text style={[styles.dropdownText, { color: key === selected ? accent : colors.text }]}>
-                {unit.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
+              {Object.entries(units).map(([key, unit]) => (
+                <Pressable
+                  key={key}
+                  onPress={() => { onSelect(key); setOpen(false); }}
+                  style={[
+                    styles.dropdownItem,
+                    { backgroundColor: key === selected ? accent + '15' : 'transparent' },
+                  ]}
+                >
+                  <Text style={[styles.dropdownText, { color: key === selected ? accent : colors.text }]}>
+                    {unit.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </Modal>
     </View>
   );
 }
@@ -401,15 +449,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   pickerLabel: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, flex: 1 },
-  dropdown: {
+  modalBackdrop: {
     position: 'absolute',
-    top: '110%',
+    top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
+  },
+  dropdown: {
+    position: 'absolute',
     borderRadius: radius.md,
     borderWidth: 1,
-    zIndex: 100,
-    maxHeight: 200,
+    // Android: elevation renders the shadow AND controls draw order (zIndex equivalent)
+    elevation: 8,
+    // iOS: shadow stack
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
   },
   dropdownItem: {
     paddingHorizontal: spacing.md,

@@ -221,6 +221,19 @@ export const UTILITY_REGISTRY: UtilityDefinition[] = [
   supportsPersistence: true,
     supportsHistory: false,
     supportsFavourite: true,
+},
+{
+  id: 'expense',
+  title: 'Expenses',
+  description: 'Track spending by category with income & balance overview',
+  icon: 'wallet-outline',
+  iconFamily: 'Ionicons',
+  route: '/utility/expense',
+  category: 'finance',
+  color: '#6366F1',
+   supportsPersistence: true,
+    supportsHistory: false,
+    supportsFavourite: true,
 }
 
 ];

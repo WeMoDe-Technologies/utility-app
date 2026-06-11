@@ -188,5 +188,20 @@ export interface CompassState {
   trueNorth: boolean;
 }
 
+export interface Expense {
+  id: string;
+  date: number;          // Date.now() timestamp
+  amount: number;
+  note: string;
+  category: 'transport' | 'food' | 'shopping' | 'bills' | 'health' | 'other';
+  isIncome: boolean;
+}
+ 
+export interface ExpenseState {
+  expenses: Expense[];
+  income: number;        // manual baseline income
+  includeBills: boolean;
+}
+ 
 
 export type UtilityId = keyof UtilityStateMap;

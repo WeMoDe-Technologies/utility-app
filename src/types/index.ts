@@ -184,4 +184,9 @@ export type UtilityStateMap = {
   gst: GSTState;
 };
 
+export interface CompassState {
+  trueNorth: boolean;
+}
+
+
 export type UtilityId = keyof UtilityStateMap;

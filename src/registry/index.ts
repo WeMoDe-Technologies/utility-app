@@ -209,6 +209,20 @@ export const UTILITY_REGISTRY: UtilityDefinition[] = [
     supportsHistory: false,
     supportsFavourite: true,
   },
+  {
+  id: 'compass',
+  title: 'Compass',
+  description: 'Heading, cardinal direction, GPS coordinates & altitude',
+  icon: 'compass-outline',
+  iconFamily: 'Ionicons',
+  route: '/utility/compass',
+  category: 'tools',
+  color: '#06B6D4',
+  supportsPersistence: true,
+    supportsHistory: false,
+    supportsFavourite: true,
+}
+
 ];
 
 export const UTILITY_MAP = Object.fromEntries(

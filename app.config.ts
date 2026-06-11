@@ -16,6 +16,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   plugins: [
     'expo-router',
     'expo-font',
+    ["expo-location", { "locationWhenInUsePermission": "Used to display your GPS coordinates." }],
     'expo-camera',
     [
       'expo-barcode-scanner',

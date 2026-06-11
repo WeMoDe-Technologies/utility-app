@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing['5xl'],
   },
   grid: {
-    gap: spacing.sm,
+    gap: spacing.xl,
   },
   row: {
     flexDirection: 'row',

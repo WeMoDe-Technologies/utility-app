@@ -1,57 +1,56 @@
 import { create } from 'zustand';
 import { loadJSON, saveJSON, StorageKeys } from '@/utils/storage';
-import type { RecentEntry } from '@/types';
+
+export interface RecentEntry {
+  id: string;
+  lastUsedAt: number;
+  useCount: number;
+}
 
 interface RecentsState {
-  entries: RecentEntry[];
+  recents: RecentEntry[];
+  // Both names exist — trackRecent is the canonical one,
+  // recordUsage is the alias the rest of the app calls
+  trackRecent: (id: string) => void;
   recordUsage: (id: string) => void;
-  clearRecent: () => void;
-  getRecent: (limit?: number) => RecentEntry[];
+  hydrate: () => Promise<void>;
 }
 
 const MAX_RECENTS = 20;
 
-export const useRecentsStore = create<RecentsState>()((set, get) => {
-  const saved = loadJSON<RecentEntry[]>(StorageKeys.RECENTS, []);
+export const useRecentsStore = create<RecentsState>((set, get) => {
+  const record = (id: string) => {
+    const now = Date.now();
+    const existing = get().recents;
+    const idx = existing.findIndex((r) => r.id === id);
+    let next: RecentEntry[];
 
-  const persist = (entries: RecentEntry[]) =>
-    saveJSON(StorageKeys.RECENTS, entries);
+    if (idx >= 0) {
+      next = existing.map((r) =>
+        r.id === id
+          ? { ...r, lastUsedAt: now, useCount: r.useCount + 1 }
+          : r
+      );
+    } else {
+      next = [{ id, lastUsedAt: now, useCount: 1 }, ...existing].slice(
+        0,
+        MAX_RECENTS
+      );
+    }
+
+    set({ recents: next });
+    saveJSON(StorageKeys.RECENTS, next);
+  };
 
   return {
-    entries: saved,
+    recents: [],
 
-    recordUsage: (id) => {
-      const now = Date.now();
-      const existing = get().entries.find((e) => e.utilityId === id);
+    trackRecent: record,
+    recordUsage: record,   // alias — same function, both names work
 
-      let entries: RecentEntry[];
-      if (existing) {
-        entries = get().entries.map((e) =>
-          e.utilityId === id
-            ? { ...e, lastUsedAt: now, useCount: e.useCount + 1 }
-            : e
-        );
-      } else {
-        entries = [
-          { utilityId: id, lastUsedAt: now, useCount: 1 },
-          ...get().entries,
-        ].slice(0, MAX_RECENTS);
-      }
-
-      // Sort by lastUsedAt
-      entries = [...entries].sort((a, b) => b.lastUsedAt - a.lastUsedAt);
-
-      set({ entries });
-      persist(entries);
+    hydrate: async () => {
+      const saved = await loadJSON<RecentEntry[]>(StorageKeys.RECENTS, []);
+      set({ recents: Array.isArray(saved) ? saved : [] });
     },
-
-    clearRecent: () => {
-      set({ entries: [] });
-      persist([]);
-    },
-
-    getRecent: (limit = 8) =>
-      get()
-        .entries.slice(0, limit),
   };
 });

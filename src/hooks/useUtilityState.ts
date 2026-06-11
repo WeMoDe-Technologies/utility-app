@@ -1,59 +1,58 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { getStorageKey, loadJSON, saveJSON, deleteKey } from '@/utils/storage';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { loadJSON, saveJSON, clearUtilityData, getStorageKey } from '@/utils/storage';
 
 const DEBOUNCE_MS = 400;
 
-/**
- * A generic hook that automatically persists state to MMKV storage.
- * Use this in every utility screen.
- */
-export function useUtilityState<T>(
-  utilityId: string,
-  defaultState: T
-): {
-  state: T;
-  setState: (updater: T | ((prev: T) => T)) => void;
-  clearState: () => void;
-  isHydrated: boolean;
-} {
-  const key = getStorageKey(utilityId);
-  const [state, setStateInternal] = useState<T>(() =>
-    loadJSON<T>(key, defaultState)
-  );
-  const [isHydrated, setIsHydrated] = useState(false);
+export function useUtilityState<T>(utilityId: string, defaultState: T) {
+  const [state, setStateRaw] = useState<T>(defaultState);
+  const [hydrated, setHydrated] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keep a ref so the debounced save always captures the latest value
+  const latestStateRef = useRef<T>(defaultState);
 
+  // ── Hydrate from AsyncStorage on mount ──────────────────────────────────
   useEffect(() => {
-    // Hydrate from storage on mount
-    const saved = loadJSON<T>(key, defaultState);
-    setStateInternal(saved);
-    setIsHydrated(true);
-  }, []);
+    loadJSON<T>(getStorageKey(utilityId), defaultState).then((loaded) => {
+      setStateRaw(loaded);
+      latestStateRef.current = loaded;
+      setHydrated(true);
+    });
+  }, [utilityId]);
 
+  // ── Debounced persist whenever state changes (after hydration) ───────────
+  useEffect(() => {
+    if (!hydrated) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      saveJSON(getStorageKey(utilityId), latestStateRef.current);
+    }, DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [state, hydrated, utilityId]);
+
+  // ── setState wrapper keeps the ref in sync ───────────────────────────────
   const setState = useCallback(
     (updater: T | ((prev: T) => T)) => {
-      setStateInternal((prev) => {
+      setStateRaw((prev) => {
         const next =
           typeof updater === 'function'
             ? (updater as (prev: T) => T)(prev)
             : updater;
-
-        // Debounced save
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => {
-          saveJSON(key, next);
-        }, DEBOUNCE_MS);
-
+        latestStateRef.current = next;
         return next;
       });
     },
-    [key]
+    []
   );
 
+  // ── Clear: reset to default and wipe storage ─────────────────────────────
   const clearState = useCallback(() => {
-    deleteKey(key);
-    setStateInternal(defaultState);
-  }, [key, defaultState]);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setStateRaw(defaultState);
+    latestStateRef.current = defaultState;
+    clearUtilityData(utilityId);
+  }, [utilityId, defaultState]);
 
-  return { state, setState, clearState, isHydrated };
+  return { state, setState, clearState, hydrated };
 }

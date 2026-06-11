@@ -2,48 +2,28 @@ import { create } from 'zustand';
 import { loadJSON, saveJSON, StorageKeys } from '@/utils/storage';
 
 interface FavouritesState {
-  ids: string[];
-  addFavourite: (id: string) => void;
-  removeFavourite: (id: string) => void;
-  isFavourite: (id: string) => boolean;
+  favourites: string[];
   toggleFavourite: (id: string) => void;
-  reset: () => void;
+  isFavourite: (id: string) => boolean;
+  hydrate: () => Promise<void>;
 }
 
-export const useFavouritesStore = create<FavouritesState>()((set, get) => {
-  const saved = loadJSON<string[]>(StorageKeys.FAVOURITES, []);
+export const useFavouritesStore = create<FavouritesState>((set, get) => ({
+  favourites: [],
 
-  const persist = (ids: string[]) =>
-    saveJSON(StorageKeys.FAVOURITES, ids);
+  toggleFavourite: (id) => {
+    const current = get().favourites;
+    const next = current.includes(id)
+      ? current.filter((f) => f !== id)
+      : [...current, id];
+    set({ favourites: next });
+    saveJSON(StorageKeys.FAVOURITES, next);
+  },
 
-  return {
-    ids: saved,
+  isFavourite: (id) => get().favourites.includes(id),
 
-    addFavourite: (id) => {
-      const ids = [...new Set([...get().ids, id])];
-      set({ ids });
-      persist(ids);
-    },
-
-    removeFavourite: (id) => {
-      const ids = get().ids.filter((fid) => fid !== id);
-      set({ ids });
-      persist(ids);
-    },
-
-    isFavourite: (id) => get().ids.includes(id),
-
-    toggleFavourite: (id) => {
-      if (get().isFavourite(id)) {
-        get().removeFavourite(id);
-      } else {
-        get().addFavourite(id);
-      }
-    },
-
-    reset: () => {
-      set({ ids: [] });
-      persist([]);
-    },
-  };
-});
+  hydrate: async () => {
+    const saved = await loadJSON<string[]>(StorageKeys.FAVOURITES, []);
+    set({ favourites: Array.isArray(saved) ? saved : [] });
+  },
+}));

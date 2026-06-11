@@ -202,6 +202,35 @@ export interface ExpenseState {
   income: number;        // manual baseline income
   includeBills: boolean;
 }
+
+export interface TipState {
+  billAmount: string;
+  tipPercent: number;
+  people: number;
+  splitEvenly: boolean;
+}
+ 
+export interface ColorPickerState {
+  hue: number;         // 0–359
+  saturation: number;  // 0–100
+  brightness: number;  // 0–100
+  palette: string[];   // saved HEX values
+}
+ 
+export interface SipState {
+  mode: 'sip' | 'lumpsum';
+  monthlyAmount: number;
+  lumpsum: number;
+  rate: number;       // % per annum
+  years: number;
+}
+ 
+export interface NoiseState {
+  minDb: number;
+  maxDb: number;
+  avgDb: number;
+  sampleCount: number;
+}
  
 
 export type UtilityId = keyof UtilityStateMap;

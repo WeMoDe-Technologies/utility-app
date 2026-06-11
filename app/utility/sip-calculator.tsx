@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   StyleSheet, View, Text, Pressable, ScrollView,
+  TextInput, TouchableOpacity,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
@@ -37,33 +38,121 @@ function polarXY(cx: number, cy: number, r: number, deg: number) {
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
-interface SliderRowProps {
-  label: string; value: number; min: number; max: number; step: number;
-  unit: string; colors: any; accent: string;
+interface InputRowProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;           // '₹' | '%' | ' yr'
+  suffix?: string;        // displayed after input e.g. '%', 'yr'
+  prefix?: string;        // displayed before input e.g. '₹'
+  colors: any;
+  accent: string;
+  quickSteps: number[];   // e.g. [500, 1000, 2000, 5000]
   onChange: (v: number) => void;
 }
-function SliderRow({ label, value, min, max, step, unit, colors, accent, onChange }: SliderRowProps) {
-  const pct = ((value - min) / (max - min)) * 100;
+
+function InputRow({
+  label, value, min, max, step,
+  unit, prefix, suffix,
+  colors, accent, quickSteps, onChange,
+}: InputRowProps) {
+  const [editing, setEditing] = React.useState(false);
+  const [raw, setRaw]         = React.useState('');
+  const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
+
+  const displayValue =
+    unit === '₹'
+      ? value.toLocaleString('en-IN')
+      : `${value}`;
+
+  const handleFocus = () => {
+    setRaw(String(value));
+    setEditing(true);
+  };
+
+  const handleBlur = () => {
+    setEditing(false);
+    const n = parseInt(raw.replace(/,/g, ''), 10);
+    if (!isNaN(n)) onChange(Math.min(max, Math.max(min, n)));
+  };
+
+  const handleChangeText = (t: string) => {
+    // allow only digits
+    setRaw(t.replace(/[^0-9]/g, ''));
+  };
+
+  const nudge = (delta: number) => {
+    Haptics.selectionAsync();
+    onChange(Math.min(max, Math.max(min, value + delta)));
+  };
+
   return (
-    <View style={slStyles.wrap}>
-      <View style={slStyles.top}>
-        <Text style={[slStyles.label, { color: colors.textSecondary }]}>{label}</Text>
-        <Text style={[slStyles.value, { color: accent }]}>{unit === '₹' ? `₹${value.toLocaleString('en-IN')}` : `${value}${unit}`}</Text>
+    <View style={irStyles.wrap}>
+      {/* Label row */}
+      <Text style={[irStyles.label, { color: colors.textSecondary }]}>{label}</Text>
+
+      {/* Main input pill */}
+      <View style={[irStyles.pill, { backgroundColor: accent + '14', borderColor: accent + '40' }]}>
+        {prefix ? (
+          <Text style={[irStyles.pillPrefix, { color: accent }]}>{prefix}</Text>
+        ) : null}
+
+        {editing ? (
+          <TextInput
+            style={[irStyles.pillInput, { color: accent }]}
+            value={raw}
+            onChangeText={handleChangeText}
+            onBlur={handleBlur}
+            keyboardType="number-pad"
+            autoFocus
+            selectTextOnFocus
+          />
+        ) : (
+          <TouchableOpacity onPress={handleFocus} activeOpacity={0.7} style={irStyles.pillTouchable}>
+            <Text style={[irStyles.pillValue, { color: accent }]}>{displayValue}</Text>
+          </TouchableOpacity>
+        )}
+
+        {suffix ? (
+          <Text style={[irStyles.pillSuffix, { color: accent + 'CC' }]}>{suffix}</Text>
+        ) : null}
+
+        {/* Nudge ±1 */}
+        <View style={[irStyles.nudgeWrap, { borderLeftColor: accent + '30' }]}>
+          <Pressable onPress={() => nudge(step)} style={irStyles.nudgeBtn}>
+            <Text style={[irStyles.nudgeTxt, { color: accent }]}>＋</Text>
+          </Pressable>
+          <View style={[irStyles.nudgeDivider, { backgroundColor: accent + '30' }]} />
+          <Pressable onPress={() => nudge(-step)} style={irStyles.nudgeBtn}>
+            <Text style={[irStyles.nudgeTxt, { color: accent }]}>－</Text>
+          </Pressable>
+        </View>
       </View>
-      <View style={[slStyles.track, { backgroundColor: colors.card }]}>
-        <View style={[slStyles.fill, { width: `${pct}%`, backgroundColor: accent }]} />
+
+      {/* Progress track */}
+      <View style={[irStyles.track, { backgroundColor: colors.card }]}>
+        <View style={[irStyles.fill, { width: `${pct}%`, backgroundColor: accent }]} />
       </View>
-      <View style={slStyles.steps}>
-        {[-2, -1, 0, 1, 2].map((d) => {
-          const v = Math.min(max, Math.max(min, value + d * step));
+
+      {/* Quick-select chips */}
+      <View style={irStyles.chips}>
+        {quickSteps.map((q) => {
+          const active = value === q;
           return (
             <Pressable
-              key={d}
-              onPress={() => { Haptics.selectionAsync(); onChange(Math.min(max, Math.max(min, value + d * step))); }}
-              style={[slStyles.stepBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              key={q}
+              onPress={() => { Haptics.selectionAsync(); onChange(q); }}
+              style={[
+                irStyles.chip,
+                { backgroundColor: active ? accent : colors.card, borderColor: active ? accent : colors.border },
+              ]}
             >
-              <Text style={[slStyles.stepTxt, { color: colors.textSecondary }]}>
-                {d === 0 ? `${value}` : d > 0 ? `+${Math.abs(d * step)}` : `-${Math.abs(d * step)}`}
+              <Text style={[irStyles.chipTxt, { color: active ? '#fff' : colors.textSecondary }]}>
+                {unit === '₹'
+                  ? q >= 100000 ? `₹${q / 100000}L` : `₹${(q / 1000).toFixed(0)}k`
+                  : `${q}${suffix ?? ''}`}
               </Text>
             </Pressable>
           );
@@ -73,19 +162,45 @@ function SliderRow({ label, value, min, max, step, unit, colors, accent, onChang
   );
 }
 
-const slStyles = StyleSheet.create({
+const irStyles = StyleSheet.create({
   wrap: { gap: spacing.sm },
-  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
-  value: { fontSize: typography.sizes.base, fontWeight: typography.weights.bold },
-  track: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 3 },
-  steps: { flexDirection: 'row', gap: 4 },
-  stepBtn: {
-    flex: 1, paddingVertical: 4, borderRadius: radius.md,
-    borderWidth: 1, alignItems: 'center',
+  label: { fontSize: typography.sizes.xs, fontWeight: typography.weights.bold, letterSpacing: 0.8, textTransform: 'uppercase' },
+
+  pill: {
+    flexDirection: 'row', alignItems: 'center',
+    borderRadius: radius.xl, borderWidth: 1.5,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    gap: 4,
   },
-  stepTxt: { fontSize: 10, fontWeight: typography.weights.medium },
+  pillPrefix: { fontSize: 22, fontWeight: typography.weights.bold, marginRight: 2 },
+  pillTouchable: { flex: 1 },
+  pillValue: {
+    fontSize: 28, fontWeight: typography.weights.extrabold,
+    letterSpacing: -0.5, fontVariant: ['tabular-nums'],
+  },
+  pillInput: {
+    flex: 1, fontSize: 28, fontWeight: typography.weights.extrabold,
+    letterSpacing: -0.5, padding: 0, fontVariant: ['tabular-nums'],
+  },
+  pillSuffix: { fontSize: 16, fontWeight: typography.weights.bold, marginLeft: 2 },
+
+  nudgeWrap: {
+    borderLeftWidth: 1, paddingLeft: spacing.sm,
+    gap: 0, alignItems: 'center',
+  },
+  nudgeBtn: { paddingHorizontal: 6, paddingVertical: 3 },
+  nudgeTxt: { fontSize: 18, fontWeight: typography.weights.bold, lineHeight: 22 },
+  nudgeDivider: { width: 20, height: 1 },
+
+  track: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 2 },
+
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  chip: {
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
+    borderRadius: radius.xl, borderWidth: 1,
+  },
+  chipTxt: { fontSize: typography.sizes.xs, fontWeight: typography.weights.bold },
 });
 
 export default function SipCalculatorScreen() {
@@ -163,31 +278,35 @@ export default function SipCalculatorScreen() {
         <Animated.View entering={FadeInDown.delay(80).duration(280)}>
           <View style={[styles.inputCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             {state.mode === 'sip' ? (
-              <SliderRow
+              <InputRow
                 label="Monthly Investment" value={state.monthlyAmount}
                 min={500} max={100000} step={500} unit="₹"
+                prefix="₹" quickSteps={[1000, 3000, 5000, 10000, 25000, 50000]}
                 colors={colors} accent={ACCENT}
                 onChange={(v) => setState((p) => ({ ...p, monthlyAmount: v }))}
               />
             ) : (
-              <SliderRow
+              <InputRow
                 label="Lumpsum Amount" value={state.lumpsum}
                 min={10000} max={10000000} step={10000} unit="₹"
+                prefix="₹" quickSteps={[50000, 100000, 500000, 1000000, 5000000]}
                 colors={colors} accent={ACCENT}
                 onChange={(v) => setState((p) => ({ ...p, lumpsum: v }))}
               />
             )}
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <SliderRow
-              label="Expected Return" value={state.rate}
+            <InputRow
+              label="Expected Annual Return" value={state.rate}
               min={1} max={30} step={1} unit="%"
+              suffix="%" quickSteps={[8, 10, 12, 15, 18, 24]}
               colors={colors} accent={ACCENT2}
               onChange={(v) => setState((p) => ({ ...p, rate: v }))}
             />
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <SliderRow
+            <InputRow
               label="Time Period" value={state.years}
               min={1} max={40} step={1} unit=" yr"
+              suffix=" yr" quickSteps={[3, 5, 10, 15, 20, 30]}
               colors={colors} accent="#F97316"
               onChange={(v) => setState((p) => ({ ...p, years: v }))}
             />

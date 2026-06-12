@@ -10,7 +10,6 @@ import {
   Linking,
 } from 'react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -21,7 +20,7 @@ import { usePreferencesStore } from '@/stores/preferencesStore';
 import { useFavouritesStore } from '@/stores/favouritesStore';
 import { useRecentsStore } from '@/stores/recentsStore';
 import { ThemePicker } from '@/components/common/ThemePicker';
-import { storage } from '@/utils/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { spacing, radius, typography } from '@/theme';
 
 export default function SettingsScreen() {
@@ -30,8 +29,6 @@ export default function SettingsScreen() {
   const prefs = usePreferencesStore();
   const { reset: resetFavs } = useFavouritesStore();
   const { clearRecent } = useRecentsStore();
-
-  const accent = activeTheme.colors.accent;
 
   const clearAllCache = () => {
     Alert.alert(
@@ -42,12 +39,19 @@ export default function SettingsScreen() {
         {
           text: 'Clear All',
           style: 'destructive',
-          onPress: () => {
-            const keys = storage.getAllKeys();
-            keys.filter((k) => k.startsWith('utility:')).forEach((k) => storage.delete(k));
-            clearRecent();
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            Alert.alert('Done', 'All utility cache cleared.');
+          onPress: async () => {
+            try {
+              const allKeys = await AsyncStorage.getAllKeys();
+              const utilityKeys = allKeys.filter((k) => k.startsWith('utility:'));
+              if (utilityKeys.length > 0) {
+                await AsyncStorage.multiRemove(utilityKeys);
+              }
+              clearRecent();
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert('Done', 'All utility cache cleared.');
+            } catch {
+              Alert.alert('Error', 'Could not clear cache. Please try again.');
+            }
           },
         },
       ]
@@ -84,99 +88,69 @@ export default function SettingsScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
-      {/* Accent aura behind the header */}
-      <LinearGradient
-        colors={[accent + (isDark ? '22' : '12'), accent + '00']}
-        style={styles.aura}
-        pointerEvents="none"
-      />
-
       {/* ── Header ──────────────────────────────────────────────────── */}
       <Animated.View entering={FadeIn.duration(200)}>
-        <View style={[styles.header, { paddingTop: top + 6 }]}>
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={12}
-            style={({ pressed }) => [
-              styles.iconBtn,
-              {
-                backgroundColor: pressed ? colors.muted : colors.card,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
-          </Pressable>
-          <View style={{ width: 36 }} />
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: colors.surface, paddingTop: top + 6, borderBottomColor: colors.border },
+        ]}
+      >
+        <Pressable onPress={() => router.back()} style={[styles.iconBtn, { backgroundColor: colors.muted }]} hitSlop={12}>
+          <Ionicons name="chevron-back" size={22} color={colors.text} />
+        </Pressable>
+        <View style={styles.headerCenter}>
+          <View style={[styles.headerDot, { backgroundColor: activeTheme.colors.accent }]} />
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Settings</Text>
         </View>
-
-        {/* Large title */}
-        <View style={styles.heroTitleWrap}>
-          <Text style={[styles.heroTitle, { color: colors.text }]}>Settings</Text>
-          <Text style={[styles.heroSub, { color: colors.textSecondary }]}>
-            Themes, preferences & data
-          </Text>
-        </View>
+        <View style={{ width: 36 }} />
+      </View>
       </Animated.View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* ── Active theme banner (gradient glass) ─────────────────── */}
-        <Animated.View entering={FadeInDown.delay(30).duration(350)}>
-          <View style={[styles.activeBannerWrap, { borderColor: accent + '35' }]}>
-            <LinearGradient
-              colors={[accent + (isDark ? '2A' : '1A'), accent + (isDark ? '10' : '06')]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.activeBanner}
-            >
-              <View style={[styles.bannerEmojiTile, { backgroundColor: accent + '22' }]}>
-                <Text style={styles.bannerEmoji}>{activeTheme.emoji}</Text>
-              </View>
 
-              <View style={styles.bannerInfo}>
-                <Text style={[styles.bannerLabel, { color: accent }]}>ACTIVE THEME</Text>
-                <Text style={[styles.bannerName, { color: colors.text }]}>{activeTheme.name}</Text>
-                <Text style={[styles.bannerDesc, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {activeTheme.description}
+        {/* ── Active theme banner ──────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(30).duration(350)}>
+          <View style={[styles.activeBanner, { backgroundColor: activeTheme.colors.accent + '14', borderColor: activeTheme.colors.accent + '30' }]}>
+            <Text style={styles.bannerEmoji}>{activeTheme.emoji}</Text>
+
+            <View style={styles.bannerInfo}>
+              <Text style={[styles.bannerLabel, { color: activeTheme.colors.accent }]}>
+                ACTIVE THEME
+              </Text>
+              <Text style={[styles.bannerName, { color: colors.text }]}>{activeTheme.name}</Text>
+              <Text style={[styles.bannerDesc, { color: colors.textSecondary }]}>
+                {activeTheme.description}
+              </Text>
+            </View>
+
+            <View style={styles.bannerRight}>
+              <View style={[styles.modeBadge, { backgroundColor: isDark ? '#ffffff12' : '#00000010' }]}>
+                <Ionicons name={isDark ? 'moon' : 'sunny'} size={11} color={activeTheme.colors.accent} />
+                <Text style={[styles.modeBadgeText, { color: activeTheme.colors.accent }]}>
+                  {isDark ? 'Dark' : 'Light'}
                 </Text>
               </View>
-
-              <View style={styles.bannerRight}>
-                <View
-                  style={[
-                    styles.modeBadge,
-                    { backgroundColor: isDark ? '#ffffff12' : '#00000010' },
-                  ]}
-                >
-                  <Ionicons name={isDark ? 'moon' : 'sunny'} size={11} color={accent} />
-                  <Text style={[styles.modeBadgeText, { color: accent }]}>
-                    {isDark ? 'Dark' : 'Light'}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => router.push('/theme-preview' as any)}
-                  style={({ pressed }) => [
-                    styles.previewBtn,
-                    { backgroundColor: accent, opacity: pressed ? 0.85 : 1 },
-                  ]}
-                >
-                  <Ionicons name="eye-outline" size={12} color="#fff" />
-                  <Text style={styles.previewBtnText}>Preview</Text>
-                </Pressable>
-              </View>
-            </LinearGradient>
+              <Pressable
+                onPress={() => router.push('/theme-preview' as any)}
+                style={[styles.previewBtn, { backgroundColor: activeTheme.colors.accent }]}
+              >
+                <Ionicons name="eye-outline" size={12} color="#fff" />
+                <Text style={styles.previewBtnText}>Preview</Text>
+              </Pressable>
+            </View>
           </View>
         </Animated.View>
 
         {/* ── Theme picker ─────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.delay(80).duration(350)}>
-          <SectionTitle title="Choose Theme" colors={colors} accent={accent} />
+          <SectionTitle title="Choose Theme" colors={colors} />
           <ThemePicker />
         </Animated.View>
 
         {/* ── Preferences ──────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.delay(160).duration(350)}>
-          <SectionTitle title="Preferences" colors={colors} accent={accent} />
+          <SectionTitle title="Preferences" colors={colors} />
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <ToggleRow
               icon="pulse"
@@ -186,7 +160,7 @@ export default function SettingsScreen() {
               value={prefs.hapticFeedback}
               onChange={prefs.setHapticFeedback}
               colors={colors}
-              accent={accent}
+              accent={colors.accent}
             />
             <Divider colors={colors} />
             <ToggleRow
@@ -197,14 +171,14 @@ export default function SettingsScreen() {
               value={prefs.showUsageCount}
               onChange={prefs.setShowUsageCount}
               colors={colors}
-              accent={accent}
+              accent={colors.accent}
             />
           </View>
         </Animated.View>
 
-        {/* ── Data & Storage ───────────────────────────────────────── */}
+        {/* ── Data & Storage ────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.delay(220).duration(350)}>
-          <SectionTitle title="Data & Storage" colors={colors} accent={accent} />
+          <SectionTitle title="Data & Storage" colors={colors} />
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <ActionRow icon="trash-outline" iconColor="#F43F5E" label="Clear All Cache"
               description="Remove all utility data and history" onPress={clearAllCache} colors={colors} destructive />
@@ -217,13 +191,13 @@ export default function SettingsScreen() {
           </View>
         </Animated.View>
 
-        {/* ── About ────────────────────────────────────────────────── */}
+        {/* ── About ─────────────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.delay(280).duration(350)}>
-          <SectionTitle title="About" colors={colors} accent={accent} />
+          <SectionTitle title="About" colors={colors} />
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <ActionRow icon="information-circle-outline" iconColor="#06B6D4" label="About Toolr"
-              description="Version 1.0.0 · 12 Themes · 22 Utilities"
-              onPress={() => Alert.alert('Toolr', 'Version 1.0.0\n22 Utilities · 12 Themes\nBuilt with Expo React Native')}
+            <ActionRow icon="information-circle-outline" iconColor="#06B6D4" label="About UtilityKit"
+              description="Version 1.0.0 · 12 Themes · 16 Utilities"
+              onPress={() => Alert.alert('UtilityKit', 'Version 1.0.0\n16 Utilities · 12 Themes\nBuilt with Expo React Native')}
               colors={colors} showChevron />
             <Divider colors={colors} />
             <ActionRow icon="lock-closed-outline" iconColor="#10B981" label="Privacy Policy"
@@ -232,7 +206,7 @@ export default function SettingsScreen() {
             <ActionRow icon="chatbubble-outline" iconColor="#8B5CF6" label="Send Feedback"
               onPress={() => Linking.openURL('mailto:feedback@utilitykit.app')} colors={colors} showChevron />
             <Divider colors={colors} />
-            <ActionRow icon="star" iconColor="#F59E0B" label="Rate Toolr"
+            <ActionRow icon="star" iconColor="#F59E0B" label="Rate UtilityKit"
               description="Love the app? Rate us ⭐"
               onPress={() => Linking.openURL('https://apps.apple.com')} colors={colors} showChevron />
           </View>
@@ -240,15 +214,13 @@ export default function SettingsScreen() {
 
         {/* Footer */}
         <Animated.View entering={FadeInDown.delay(340).duration(350)}>
-          <View style={styles.footer}>
-            <Text style={styles.footerEmoji}>{activeTheme.emoji}</Text>
-            <Text style={[styles.footerVersion, { color: colors.textTertiary }]}>
-              Toolr v1.0.0 · {activeTheme.name} Theme
-            </Text>
-            <Text style={[styles.footerMade, { color: colors.textTertiary }]}>
-              Made with ♥ using Expo
-            </Text>
-          </View>
+        <View style={styles.footer}>
+          <Text style={styles.footerEmoji}>{activeTheme.emoji}</Text>
+          <Text style={[styles.footerVersion, { color: colors.textTertiary }]}>
+            UtilityKit v1.0.0 · {activeTheme.name} Theme
+          </Text>
+          <Text style={[styles.footerMade, { color: colors.textTertiary }]}>Made with ♥ using Expo</Text>
+        </View>
         </Animated.View>
       </ScrollView>
     </View>
@@ -256,13 +228,8 @@ export default function SettingsScreen() {
 }
 
 // ─── Reusable sub-components ────────────────────────────────────────────────
-function SectionTitle({ title, colors, accent }: { title: string; colors: any; accent: string }) {
-  return (
-    <View style={styles.sectionTitleRow}>
-      <View style={[styles.sectionTick, { backgroundColor: accent }]} />
-      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{title}</Text>
-    </View>
-  );
+function SectionTitle({ title, colors }: { title: string; colors: any }) {
+  return <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{title}</Text>;
 }
 
 function Divider({ colors }: { colors: any }) {
@@ -277,9 +244,7 @@ function ToggleRow({ icon, iconColor, label, description, value, onChange, color
       </View>
       <View style={styles.rowInfo}>
         <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
-        {description && (
-          <Text style={[styles.rowDesc, { color: colors.textTertiary }]}>{description}</Text>
-        )}
+        {description && <Text style={[styles.rowDesc, { color: colors.textTertiary }]}>{description}</Text>}
       </View>
       <Switch
         value={value}
@@ -301,12 +266,8 @@ function ActionRow({ icon, iconColor, label, description, onPress, colors, destr
         <Ionicons name={icon} size={16} color={iconColor} />
       </View>
       <View style={styles.rowInfo}>
-        <Text style={[styles.rowLabel, { color: destructive ? '#F43F5E' : colors.text }]}>
-          {label}
-        </Text>
-        {description && (
-          <Text style={[styles.rowDesc, { color: colors.textTertiary }]}>{description}</Text>
-        )}
+        <Text style={[styles.rowLabel, { color: destructive ? '#F43F5E' : colors.text }]}>{label}</Text>
+        {description && <Text style={[styles.rowDesc, { color: colors.textTertiary }]}>{description}</Text>}
       </View>
       {showChevron && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
     </Pressable>
@@ -316,70 +277,42 @@ function ActionRow({ icon, iconColor, label, description, onPress, colors, destr
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  aura: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 260,
-  },
-
   // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: spacing.base,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 3,
+    zIndex: 10,
+    gap: spacing.sm,
   },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroTitleWrap: {
-    paddingHorizontal: spacing.base,
-    paddingBottom: spacing.sm,
-    gap: 2,
-  },
-  heroTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: -1,
-  },
-  heroSub: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
+  iconBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  headerDot: { width: 8, height: 8, borderRadius: 4 },
+  headerTitle: { fontSize: typography.sizes.md, fontWeight: typography.weights.bold, letterSpacing: -0.3 },
 
-  content: { padding: spacing.base, gap: spacing.sm, paddingBottom: 60, paddingTop: spacing.sm },
+  content: { padding: spacing.base, gap: spacing.sm, paddingBottom: 60 },
 
   // Active theme banner
-  activeBannerWrap: {
-    borderRadius: radius['2xl'],
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
   activeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
+    borderRadius: radius.xl,
+    borderWidth: 1,
     padding: spacing.base,
     gap: spacing.md,
+    marginTop: spacing.xs,
   },
-  bannerEmojiTile: {
-    width: 52,
-    height: 52,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bannerEmoji: { fontSize: 28 },
+  bannerEmoji: { fontSize: 34 },
   bannerInfo: { flex: 1, gap: 2 },
   bannerLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
-  bannerName: { fontSize: typography.sizes.md, fontWeight: '800', letterSpacing: -0.3 },
+  bannerName: { fontSize: typography.sizes.md, fontWeight: '800' },
   bannerDesc: { fontSize: typography.sizes.sm },
   bannerRight: { alignItems: 'flex-end', gap: spacing.xs },
   modeBadge: {
@@ -395,29 +328,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
     borderRadius: radius.full,
   },
   previewBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
   // Section
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.base,
-    marginBottom: spacing.sm,
-    paddingHorizontal: 2,
-  },
-  sectionTick: { width: 3, height: 12, borderRadius: 2 },
   sectionTitle: {
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1.1,
+    marginTop: spacing.base,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
-  card: { borderRadius: radius['2xl'], borderWidth: 1, overflow: 'hidden' },
+  card: { borderRadius: radius.xl, borderWidth: 1, overflow: 'hidden' },
   divider: { height: StyleSheet.hairlineWidth, marginHorizontal: spacing.base },
 
   // Rows
@@ -427,20 +354,14 @@ const styles = StyleSheet.create({
     padding: spacing.base,
     gap: spacing.md,
   },
-  rowIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowInfo: { flex: 1, gap: 1 },
-  rowLabel: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold, letterSpacing: -0.2 },
-  rowDesc: { fontSize: typography.sizes.xs },
+  rowIcon: { width: 34, height: 34, borderRadius: radius.sm + 2, alignItems: 'center', justifyContent: 'center' },
+  rowInfo: { flex: 1 },
+  rowLabel: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
+  rowDesc: { fontSize: typography.sizes.sm, marginTop: 2 },
 
   // Footer
-  footer: { alignItems: 'center', gap: 4, paddingVertical: spacing.xl },
-  footerEmoji: { fontSize: 22 },
-  footerVersion: { fontSize: typography.sizes.xs, fontWeight: '600' },
-  footerMade: { fontSize: typography.sizes.xs },
+  footer: { alignItems: 'center', paddingTop: spacing.lg, gap: 4 },
+  footerEmoji: { fontSize: 24, marginBottom: spacing.xs },
+  footerVersion: { fontSize: 13, fontWeight: '600' },
+  footerMade: { fontSize: 12 },
 });

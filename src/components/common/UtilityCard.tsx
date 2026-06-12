@@ -135,13 +135,13 @@ export function UtilityCard({ utility, recentEntry, index = 0 }: UtilityCardProp
           </Text>
 
           {/* Usage count */}
-          {showUsageCount && recentEntry && recentEntry.useCount > 1 && (
+         {/* {showUsageCount && recentEntry && recentEntry.useCount > 1 && (
             <View style={[styles.usagePill, { backgroundColor: colors.muted }]}>
               <Text style={[styles.usageCount, { color: colors.textSecondary }]}>
                 {recentEntry.useCount}×
               </Text>
             </View>
-          )}
+          )}  */}
 
           {/* Favourite badge */}
           {favourite && (

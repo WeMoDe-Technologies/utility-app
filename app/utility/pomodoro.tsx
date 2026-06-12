@@ -33,6 +33,8 @@ const DEFAULT_STATE: PomodoroState = {
   sessionsCompleted: 0,
   isRunning: false,
   remainingSeconds: 25 * 60,
+  startTimestamp: null,
+  secondsAtPause: 0,
 };
 
 const PHASE_COLORS = {
@@ -58,14 +60,55 @@ export default function PomodoroScreen() {
     'pomodoro',
     DEFAULT_STATE
   );
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   const pulseAnim = useSharedValue(1);
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseAnim.value }],
   }));
 
-  // Start/stop interval
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track whether we were running when the app went to background
+  const wasRunningRef = useRef(false);
+
+  // ── Helper: compute remaining seconds from wall-clock time ────────────────
+  const computeRemaining = (s: PomodoroState): number => {
+    if (!s.isRunning || s.startTimestamp === null) return s.remainingSeconds;
+    const elapsed = Math.floor((Date.now() - s.startTimestamp) / 1000);
+    return Math.max(0, s.secondsAtPause - elapsed);
+  };
+
+  // ── Tick: re-derive remaining from timestamps instead of decrementing ─────
+  const tick = () => {
+    setState((prev) => {
+      if (!prev.isRunning || prev.startTimestamp === null) return prev;
+
+      const elapsed = Math.floor((Date.now() - prev.startTimestamp) / 1000);
+      const remaining = Math.max(0, prev.secondsAtPause - elapsed);
+
+      if (remaining <= 0) {
+        // Phase complete
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        const nextPhase = getNextPhase(prev);
+        const nextDuration = getPhaseDuration(nextPhase, prev);
+        return {
+          ...prev,
+          isRunning: false,
+          currentPhase: nextPhase,
+          remainingSeconds: nextDuration * 60,
+          startTimestamp: null,
+          secondsAtPause: nextDuration * 60,
+          sessionsCompleted:
+            prev.currentPhase === 'work'
+              ? prev.sessionsCompleted + 1
+              : prev.sessionsCompleted,
+        };
+      }
+
+      return { ...prev, remainingSeconds: remaining };
+    });
+  };
+
+  // ── Start/stop interval ───────────────────────────────────────────────────
   useEffect(() => {
     if (state.isRunning) {
       pulseAnim.value = withRepeat(
@@ -76,28 +119,7 @@ export default function PomodoroScreen() {
         -1,
         false
       );
-      intervalRef.current = setInterval(() => {
-        setState((prev) => {
-          if (prev.remainingSeconds <= 1) {
-            // Phase complete
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            clearInterval(intervalRef.current!);
-            const nextPhase = getNextPhase(prev);
-            const nextDuration = getPhaseDuration(nextPhase, prev);
-            return {
-              ...prev,
-              isRunning: false,
-              currentPhase: nextPhase,
-              remainingSeconds: nextDuration * 60,
-              sessionsCompleted:
-                prev.currentPhase === 'work'
-                  ? prev.sessionsCompleted + 1
-                  : prev.sessionsCompleted,
-            };
-          }
-          return { ...prev, remainingSeconds: prev.remainingSeconds - 1 };
-        });
-      }, 1000);
+      intervalRef.current = setInterval(tick, 500); // 500ms for snappy display
     } else {
       pulseAnim.value = withTiming(1);
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -106,7 +128,21 @@ export default function PomodoroScreen() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [state.isRunning]);
+  }, [state.isRunning, state.startTimestamp, state.secondsAtPause]);
+
+  // ── AppState: handle going to background / returning to foreground ─────────
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        wasRunningRef.current = state.isRunning;
+      } else if (nextState === 'active' && wasRunningRef.current) {
+        // App came back — force a tick immediately so the display snaps to
+        // the correct time without waiting up to 500ms for the next interval
+        tick();
+      }
+    });
+    return () => sub.remove();
+  }, [state.isRunning, state.startTimestamp, state.secondsAtPause]);
 
   const totalSeconds = getPhaseDuration(state.currentPhase, state) * 60;
   const progress = 1 - state.remainingSeconds / totalSeconds;
@@ -121,25 +157,55 @@ export default function PomodoroScreen() {
 
   const handleToggle = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setState((p) => ({ ...p, isRunning: !p.isRunning }));
+    setState((p) => {
+      if (p.isRunning) {
+        // Pausing — save how many seconds remain right now
+        const remaining = computeRemaining(p);
+        return {
+          ...p,
+          isRunning: false,
+          remainingSeconds: remaining,
+          secondsAtPause: remaining,
+          startTimestamp: null,
+        };
+      } else {
+        // Starting/resuming — record the wall-clock start time
+        return {
+          ...p,
+          isRunning: true,
+          startTimestamp: Date.now(),
+          secondsAtPause: p.remainingSeconds,
+        };
+      }
+    });
   };
 
   const handleReset = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setState((p) => ({
-      ...p,
-      isRunning: false,
-      remainingSeconds: getPhaseDuration(p.currentPhase, p) * 60,
-    }));
+    setState((p) => {
+      const totalSeconds = getPhaseDuration(p.currentPhase, p) * 60;
+      return {
+        ...p,
+        isRunning: false,
+        remainingSeconds: totalSeconds,
+        startTimestamp: null,
+        secondsAtPause: totalSeconds,
+      };
+    });
   };
 
   const handlePhaseSelect = (phase: PomodoroState['currentPhase']) => {
-    setState((p) => ({
-      ...p,
-      currentPhase: phase,
-      isRunning: false,
-      remainingSeconds: getPhaseDuration(phase, p) * 60,
-    }));
+    setState((p) => {
+      const totalSeconds = getPhaseDuration(phase, p) * 60;
+      return {
+        ...p,
+        currentPhase: phase,
+        isRunning: false,
+        remainingSeconds: totalSeconds,
+        startTimestamp: null,
+        secondsAtPause: totalSeconds,
+      };
+    });
   };
 
   return (
@@ -278,8 +344,10 @@ export default function PomodoroScreen() {
               setState((p) => ({
                 ...p,
                 workDuration: v,
-                // If currently on the work phase, sync the countdown to the new duration
                 remainingSeconds: p.currentPhase === 'work' ? v * 60 : p.remainingSeconds,
+                secondsAtPause: p.currentPhase === 'work' ? v * 60 : p.secondsAtPause,
+                startTimestamp: p.currentPhase === 'work' ? null : p.startTimestamp,
+                isRunning: p.currentPhase === 'work' ? false : p.isRunning,
               }))
             }
             colors={colors}
@@ -292,8 +360,10 @@ export default function PomodoroScreen() {
               setState((p) => ({
                 ...p,
                 breakDuration: v,
-                // If currently on the break phase, sync the countdown to the new duration
                 remainingSeconds: p.currentPhase === 'break' ? v * 60 : p.remainingSeconds,
+                secondsAtPause: p.currentPhase === 'break' ? v * 60 : p.secondsAtPause,
+                startTimestamp: p.currentPhase === 'break' ? null : p.startTimestamp,
+                isRunning: p.currentPhase === 'break' ? false : p.isRunning,
               }))
             }
             colors={colors}
@@ -306,8 +376,10 @@ export default function PomodoroScreen() {
               setState((p) => ({
                 ...p,
                 longBreakDuration: v,
-                // If currently on the longBreak phase, sync the countdown to the new duration
                 remainingSeconds: p.currentPhase === 'longBreak' ? v * 60 : p.remainingSeconds,
+                secondsAtPause: p.currentPhase === 'longBreak' ? v * 60 : p.secondsAtPause,
+                startTimestamp: p.currentPhase === 'longBreak' ? null : p.startTimestamp,
+                isRunning: p.currentPhase === 'longBreak' ? false : p.isRunning,
               }))
             }
             colors={colors}

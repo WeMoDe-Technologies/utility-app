@@ -5,7 +5,6 @@ import {
   Text,
   ScrollView,
   Pressable,
-  Platform,
 } from 'react-native';
 import Animated, {
   FadeInDown,
@@ -18,7 +17,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import Svg, { Rect, Path } from 'react-native-svg';
+import Svg, { Rect } from 'react-native-svg';
 import {
   useFonts,
   SpaceGrotesk_700Bold,
@@ -72,8 +71,8 @@ function SettingsIcon({ color }: { color: string }) {
 export default function HomeScreen() {
   const { colors, theme } = useTheme();
   const { top } = useSafeAreaInsets();
-  const { ids: favouriteIds = [] }      = useFavouritesStore();
-  const { entries: recentEntries = [] } = useRecentsStore();
+  const { favourites: favouriteIds = [] }   = useFavouritesStore();
+  const { recents: recentEntries = [] }     = useRecentsStore();
 
   const [fontsLoaded] = useFonts({
     SpaceGrotesk_700Bold,
@@ -98,7 +97,7 @@ export default function HomeScreen() {
 
   // Sort: recents first, then registry order
   const sortedUtilities = useMemo<UtilityEntry[]>(() => {
-    const recentMap = new Map(recentEntries.map((e) => [e.utilityId, e.lastUsed]));
+    const recentMap = new Map(recentEntries.map((e) => [e.id, e.lastUsedAt]));
     return [...UTILITY_REGISTRY].sort((a, b) => {
       const at = recentMap.get(a.id) ?? 0;
       const bt = recentMap.get(b.id) ?? 0;
@@ -119,7 +118,7 @@ export default function HomeScreen() {
             <UtilityCard
               key={u.id}
               utility={u}
-              recentEntry={recentEntries.find((r) => r.utilityId === u.id)}
+              recentEntry={recentEntries.find((r) => r.id === u.id)}
             />
           ))}
           {chunk.length < 4 &&

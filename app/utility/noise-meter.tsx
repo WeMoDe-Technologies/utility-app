@@ -387,7 +387,24 @@ export default function NoiseMeterScreen() {
     setCurrentDb(0);
   };
 
-  useEffect(() => () => { stopMeter(); }, []);
+  useEffect(() => {
+    return () => {
+      // Always release the audio session when this screen unmounts,
+      // even if stopMeter() throws (e.g. fast navigation)
+      (async () => {
+        try {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          if (recordingRef.current) {
+            await recordingRef.current.stopAndUnloadAsync();
+            recordingRef.current = null;
+          }
+        } catch {}
+        try {
+          await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+        } catch {}
+      })();
+    };
+  }, []);
 
   const accentColor = dbToColor(currentDb);
   const roundDb     = currentDb;

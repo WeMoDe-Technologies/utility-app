@@ -199,15 +199,20 @@ interface AddModalProps {
   onClose: () => void;
   onSave: (e: Omit<Expense, 'id' | 'date'>) => void;
   colors: any;
+  initialIsIncome?: boolean;
 }
 
-function AddExpenseModal({ visible, onClose, onSave, colors }: AddModalProps) {
+function AddExpenseModal({ visible, onClose, onSave, colors, initialIsIncome = false }: AddModalProps) {
   const [amount,   setAmount]   = useState('');
   const [note,     setNote]     = useState('');
   const [category, setCategory] = useState<CategoryId>('food');
-  const [isIncome, setIsIncome] = useState(false);
+  const [isIncome, setIsIncome] = useState(initialIsIncome);
 
-  const reset = () => { setAmount(''); setNote(''); setCategory('food'); setIsIncome(false); };
+  const reset = () => { setAmount(''); setNote(''); setCategory('food'); setIsIncome(initialIsIncome); };
+
+  React.useEffect(() => {
+    if (visible) setIsIncome(initialIsIncome);
+  }, [visible, initialIsIncome]);
 
   const handleSave = () => {
     const n = parseFloat(amount);
@@ -342,7 +347,7 @@ export default function ExpenseScreen() {
   }, [state.expenses, period, state.includeBills]);
 
   // ── Aggregations ──────────────────────────────────────────────────────────
-  const { totalSpend, totalIncome, slices } = useMemo(() => {
+  const { totalSpend, totalIncome, slices, chartTotal } = useMemo(() => {
     const spend  = filteredExpenses.filter((e) => !e.isIncome);
     const income = filteredExpenses.filter((e) => e.isIncome);
 
@@ -354,12 +359,19 @@ export default function ExpenseScreen() {
       byCategory[e.category] = (byCategory[e.category] ?? 0) + e.amount;
     });
 
-    const slices = CATEGORIES
+    const spendSlices = CATEGORIES
       .filter((c) => byCategory[c.id])
       .map((c) => ({ id: c.id, value: byCategory[c.id], color: c.color, icon: c.icon }))
       .sort((a, b) => b.value - a.value);
 
-    return { totalSpend, totalIncome, slices };
+    const incomeSlice = totalIncome > 0
+      ? [{ id: 'income', value: totalIncome, color: '#10B981', icon: '💰' }]
+      : [];
+
+    const slices = [...spendSlices, ...incomeSlice];
+    const chartTotal = totalSpend + totalIncome;
+
+    return { totalSpend, totalIncome, slices, chartTotal };
   }, [filteredExpenses, state.income]);
 
   const netBalance = totalIncome - totalSpend;
@@ -439,7 +451,7 @@ export default function ExpenseScreen() {
         {/* ── Donut chart ──────────────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.delay(120).duration(300)}>
           <View style={styles.donutWrap}>
-            <DonutChart slices={slices} total={totalSpend} colors={colors} />
+            <DonutChart slices={slices} total={chartTotal} colors={colors} />
             {/* Center label */}
             <View style={styles.donutCenter} pointerEvents="none">
               <Text style={[styles.donutLabel, { color: colors.textSecondary }]}>Total spend</Text>
@@ -543,6 +555,7 @@ export default function ExpenseScreen() {
         onClose={() => setShowModal(false)}
         onSave={handleAdd}
         colors={colors}
+        initialIsIncome={activeTab === 'income'}
       />
     </SafeAreaView>
   );

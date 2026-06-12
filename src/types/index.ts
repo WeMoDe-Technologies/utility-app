@@ -28,6 +28,13 @@ export interface RecentEntry {
   useCount: number;
 }
 
+// ─── Simple calculator (basic 4-op, used by calculator.tsx) ───────────────
+export interface SimpleCalculatorState {
+  expression: string;
+  result: string;
+  history: Array<{ expression: string; result: string; timestamp: number }>;
+}
+
 // ─── Calculator with memory ────────────────────────────────────────────────
 export interface CalculatorState {
   display: string;           // what's shown in main display
@@ -90,6 +97,11 @@ export interface PomodoroState {
   sessionsCompleted: number;
   isRunning: boolean;
   remainingSeconds: number;
+  /** Epoch ms when the current run started (or null when paused). Used to
+   *  compute real elapsed time so the timer survives app backgrounding. */
+  startTimestamp: number | null;
+  /** Seconds that were already counted before the last pause. */
+  secondsAtPause: number;
 }
 
 export interface StopwatchState {

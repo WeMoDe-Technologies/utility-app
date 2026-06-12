@@ -91,7 +91,7 @@ export const palette = {
     subtle: '#4A4A62',
     text: '#E8E8F0',
     textSecondary: '#9090A8',
-    textTertiary: '#6060780',
+    textTertiary: '#606078',
   },
 
   // Light palette

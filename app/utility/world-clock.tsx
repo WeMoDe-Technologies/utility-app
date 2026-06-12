@@ -37,7 +37,7 @@ const DEFAULT_STATE: WorldClockState = {
   cities: [PRESET_CITIES[3], PRESET_CITIES[1], PRESET_CITIES[0]],
 };
 
-function getCityTime(timezone: string, offset: number) {
+function getCityTime(timezone: string, _offset: number) {
   try {
     return new Date().toLocaleTimeString('en-US', {
       timeZone: timezone,
@@ -47,10 +47,9 @@ function getCityTime(timezone: string, offset: number) {
       hour12: false,
     });
   } catch {
-    // Fallback using offset
-    const utc = new Date().getTime() + new Date().getTimezoneOffset() * 60000;
-    const city = new Date(utc + offset * 3600000);
-    return city.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    // IANA timezone not supported on this device — show placeholder rather
+    // than a silently wrong time from a hardcoded UTC offset (DST unaware)
+    return '--:--:--';
   }
 }
 

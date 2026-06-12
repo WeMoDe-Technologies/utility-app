@@ -18,8 +18,8 @@ export function UtilityIcon({ utility, size = 24, color = '#fff' }: UtilityIconP
   switch (iconFamily) {
     case 'MaterialCommunityIcons':
       return <MaterialCommunityIcons name={icon as any} size={size} color={color} />;
-    // case 'MaterialIcons':
-    //   return <MaterialIcons name={icon as any} size={size} color={color} />;
+    case 'MaterialIcons':
+      return <MaterialIcons name={icon as any} size={size} color={color} />;
     case 'Feather':
       return <Feather name={icon as any} size={size} color={color} />;
     case 'FontAwesome5':

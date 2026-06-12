@@ -81,7 +81,7 @@ export function QuickActionsSheet({
       color: utility.color,
       onPress: () => {
         onClose();
-        setTimeout(() => router.push(utility.route as any), 100);
+        setTimeout(() => router.push(utility.route as any), 250);
       },
     },
     {

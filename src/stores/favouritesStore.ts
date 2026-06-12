@@ -5,6 +5,7 @@ interface FavouritesState {
   favourites: string[];
   toggleFavourite: (id: string) => void;
   isFavourite: (id: string) => boolean;
+  reset: () => void;
   hydrate: () => Promise<void>;
 }
 
@@ -21,6 +22,11 @@ export const useFavouritesStore = create<FavouritesState>((set, get) => ({
   },
 
   isFavourite: (id) => get().favourites.includes(id),
+
+  reset: () => {
+    set({ favourites: [] });
+    saveJSON(StorageKeys.FAVOURITES, []);
+  },
 
   hydrate: async () => {
     const saved = await loadJSON<string[]>(StorageKeys.FAVOURITES, []);

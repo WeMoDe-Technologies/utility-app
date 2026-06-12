@@ -13,6 +13,7 @@ interface RecentsState {
   // recordUsage is the alias the rest of the app calls
   trackRecent: (id: string) => void;
   recordUsage: (id: string) => void;
+  clearRecent: () => void;
   hydrate: () => Promise<void>;
 }
 
@@ -47,6 +48,11 @@ export const useRecentsStore = create<RecentsState>((set, get) => {
 
     trackRecent: record,
     recordUsage: record,   // alias — same function, both names work
+
+    clearRecent: () => {
+      set({ recents: [] });
+      saveJSON(StorageKeys.RECENTS, []);
+    },
 
     hydrate: async () => {
       const saved = await loadJSON<RecentEntry[]>(StorageKeys.RECENTS, []);

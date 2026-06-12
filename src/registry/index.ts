@@ -264,7 +264,7 @@ export const UTILITY_REGISTRY: UtilityDefinition[] = [
   },
   {
     id: 'sip',
-    title: 'SIP / Lumpsum',
+    title: 'SIP',
     description: 'SIP and lumpsum investment return calculator',
     icon: 'trending-up-outline',
     iconFamily: 'Ionicons',

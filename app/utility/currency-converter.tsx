@@ -96,11 +96,18 @@ export default function CurrencyConverterScreen() {
       if (fresh) rates = fresh;
     }
 
-    const rate = rates[state.toCurrency]
-      ? (amount * rates[state.toCurrency]) / (rates[state.fromCurrency] || 1)
-      : (amount * FALLBACK_RATES[state.toCurrency]) / FALLBACK_RATES[state.fromCurrency];
+    // API returns rates with fromCurrency as the base (rates[fromCurrency] === 1.0),
+    // so the conversion is simply: amount × rates[toCurrency]
+    // The fallback rates are all relative to USD, so we cross-rate them.
+    let result: number;
+    if (rates[state.toCurrency]) {
+      result = amount * rates[state.toCurrency];
+    } else {
+      // Fallback: cross-rate via USD
+      result = (amount * FALLBACK_RATES[state.toCurrency]) / FALLBACK_RATES[state.fromCurrency];
+    }
 
-    setState((p) => ({ ...p, result: rate.toFixed(4) }));
+    setState((p) => ({ ...p, result: result.toFixed(4) }));
   };
 
   const handleSwap = () => {

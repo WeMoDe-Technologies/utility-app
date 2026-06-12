@@ -1,5 +1,15 @@
 import type { ThemeColors } from './index';
 
+// ─── Gradient Support (optional, additive) ─────────────────────────────────
+// Tuple-typed so the arrays drop straight into expo-linear-gradient's
+// `colors` prop without casting. Only the new "glass" themes define these;
+// every existing theme omits them and falls back to solid `colors`.
+export interface ThemeGradients {
+  bg: readonly [string, string, ...string[]]; // screen background sweep
+  accent: readonly [string, string, ...string[]]; // iridescent buttons / highlights
+  card?: readonly [string, string, ...string[]]; // frosted-glass card fill
+}
+
 // ─── Theme Definition Type ────────────────────────────────────────────────
 export interface ThemeDefinition {
   id: string;
@@ -8,6 +18,7 @@ export interface ThemeDefinition {
   emoji: string;
   isDark: boolean;
   colors: ThemeColors;
+  gradients?: ThemeGradients; // optional — only iridescent/glass themes use this
   preview: {
     bg: string;
     surface: string;
@@ -292,20 +303,268 @@ const neon: ThemeDefinition = {
   preview: { bg: '#080A06', surface: '#161C10', accent: '#84CC16', card: '#0F1209' },
 };
 
+// ════════════════════════════════════════════════════════════════════════
+//  CLASSIC / MODERN THEMES — sourced from well-known design palettes
+// ════════════════════════════════════════════════════════════════════════
+
+// ─── 13. Mocha (Catppuccin Mocha — dark) ──────────────────────────────────
+const mocha: ThemeDefinition = {
+  id: 'mocha',
+  name: 'Mocha',
+  description: 'Soothing pastel dark with mauve accent',
+  emoji: '🐱',
+  isDark: true,
+  colors: {
+    bg: '#11111B',
+    surface: '#181825',
+    card: '#1E1E2E',
+    border: '#313244',
+    muted: '#45475A',
+    subtle: '#585B70',
+    text: '#CDD6F4',
+    textSecondary: '#A6ADC8',
+    textTertiary: '#6C7086',
+    accent: '#CBA6F7',
+    accentLight: 'rgba(203,166,247,0.15)',
+  },
+  preview: { bg: '#11111B', surface: '#1E1E2E', accent: '#CBA6F7', card: '#181825' },
+};
+
+// ─── 14. Latte (Catppuccin Latte — light) ─────────────────────────────────
+const latte: ThemeDefinition = {
+  id: 'latte',
+  name: 'Latte',
+  description: 'Soft pastel light with mauve accent',
+  emoji: '🍵',
+  isDark: false,
+  colors: {
+    bg: '#EFF1F5',
+    surface: '#FFFFFF',
+    card: '#FFFFFF',
+    border: '#CCD0DA',
+    muted: '#E6E9EF',
+    subtle: '#DCE0E8',
+    text: '#4C4F69',
+    textSecondary: '#5C5F77',
+    textTertiary: '#8C8FA1',
+    accent: '#8839EF',
+    accentLight: 'rgba(136,57,239,0.10)',
+  },
+  preview: { bg: '#EFF1F5', surface: '#FFFFFF', accent: '#8839EF', card: '#E6E9EF' },
+};
+
+// ─── 15. Tokyo Night (dark) ────────────────────────────────────────────────
+const tokyoNight: ThemeDefinition = {
+  id: 'tokyo-night',
+  name: 'Tokyo Night',
+  description: 'Neon-lit city dark with blue accent',
+  emoji: '🌃',
+  isDark: true,
+  colors: {
+    bg: '#1A1B26',
+    surface: '#1F2335',
+    card: '#24283B',
+    border: '#3B4261',
+    muted: '#414868',
+    subtle: '#565F89',
+    text: '#C0CAF5',
+    textSecondary: '#A9B1D6',
+    textTertiary: '#565F89',
+    accent: '#7AA2F7',
+    accentLight: 'rgba(122,162,247,0.15)',
+  },
+  preview: { bg: '#1A1B26', surface: '#24283B', accent: '#7AA2F7', card: '#1F2335' },
+};
+
+// ─── 16. Nord (dark) ───────────────────────────────────────────────────────
+const nord: ThemeDefinition = {
+  id: 'nord',
+  name: 'Nord',
+  description: 'Arctic blue-gray dark with frost accent',
+  emoji: '❄️',
+  isDark: true,
+  colors: {
+    bg: '#2E3440',
+    surface: '#353C4A',
+    card: '#3B4252',
+    border: '#434C5E',
+    muted: '#4C566A',
+    subtle: '#616E88',
+    text: '#ECEFF4',
+    textSecondary: '#D8DEE9',
+    textTertiary: '#7B88A1',
+    accent: '#88C0D0',
+    accentLight: 'rgba(136,192,208,0.15)',
+  },
+  preview: { bg: '#2E3440', surface: '#3B4252', accent: '#88C0D0', card: '#353C4A' },
+};
+
+// ─── 17. Rosé Pine (dark) ──────────────────────────────────────────────────
+const rosePine: ThemeDefinition = {
+  id: 'rose-pine',
+  name: 'Rosé Pine',
+  description: 'Soho-vibe dark with iris accent',
+  emoji: '🌹',
+  isDark: true,
+  colors: {
+    bg: '#191724',
+    surface: '#1F1D2E',
+    card: '#26233A',
+    border: '#403D52',
+    muted: '#524F67',
+    subtle: '#6E6A86',
+    text: '#E0DEF4',
+    textSecondary: '#908CAA',
+    textTertiary: '#6E6A86',
+    accent: '#C4A7E7',
+    accentLight: 'rgba(196,167,231,0.15)',
+  },
+  preview: { bg: '#191724', surface: '#26233A', accent: '#C4A7E7', card: '#1F1D2E' },
+};
+
+// ─── 18. Rosé Pine Dawn (light) ────────────────────────────────────────────
+const rosePineDawn: ThemeDefinition = {
+  id: 'rose-pine-dawn',
+  name: 'Rosé Pine Dawn',
+  description: 'Soft warm light with iris accent',
+  emoji: '🌷',
+  isDark: false,
+  colors: {
+    bg: '#FAF4ED',
+    surface: '#FFFAF3',
+    card: '#FFFAF3',
+    border: '#F2E9E1',
+    muted: '#F4EDE8',
+    subtle: '#DFDAD9',
+    text: '#575279',
+    textSecondary: '#797593',
+    textTertiary: '#9893A5',
+    accent: '#907AA9',
+    accentLight: 'rgba(144,122,169,0.12)',
+  },
+  preview: { bg: '#FAF4ED', surface: '#FFFAF3', accent: '#907AA9', card: '#F2E9E1' },
+};
+
+// ════════════════════════════════════════════════════════════════════════
+//  IRIDESCENT / HOLOGRAPHIC GLASS THEMES — sampled from reference images.
+//  These define `gradients`; render with expo-linear-gradient (see usage
+//  notes). `colors` still hold representative solids as a fallback so any
+//  component that doesn't use the gradient still renders correctly.
+// ════════════════════════════════════════════════════════════════════════
+
+// ─── 19. Prism (Light — frosted holographic glass) ─────────────────────────
+// Cool periwinkle → lilac → pink, like backlit frosted panels.
+const prism: ThemeDefinition = {
+  id: 'prism',
+  name: 'Prism',
+  description: 'Frosted holographic glass, periwinkle to pink',
+  emoji: '🔮',
+  isDark: false,
+  colors: {
+    bg: '#EBEAF7',
+    surface: '#FFFFFF',
+    card: '#F4F2FE',
+    border: '#DAD8F0',
+    muted: '#E8E6F8',
+    subtle: '#DEDCF2',
+    text: '#211D3D',
+    textSecondary: '#5B5680',
+    textTertiary: '#9A95BD',
+    accent: '#8B7CF6',
+    accentLight: 'rgba(139,124,246,0.12)',
+  },
+  gradients: {
+    bg: ['#E3E6FB', '#ECE3FB', '#FBE3F4'],
+    accent: ['#A5B4FC', '#C4B5FD', '#F0ABFC'],
+    card: ['rgba(255,255,255,0.70)', 'rgba(240,238,255,0.45)'],
+  },
+  preview: { bg: '#EBEAF7', surface: '#F4F2FE', accent: '#8B7CF6', card: '#FBE3F4' },
+};
+
+// ─── 20. Iridescence (Light — chrome liquid) ───────────────────────────────
+// Warm lavender ground with a purple → cyan → magenta chrome sweep.
+const iridescence: ThemeDefinition = {
+  id: 'iridescence',
+  name: 'Iridescence',
+  description: 'Liquid chrome, purple to cyan to magenta',
+  emoji: '🫧',
+  isDark: false,
+  colors: {
+    bg: '#ECE7EF',
+    surface: '#FFFFFF',
+    card: '#F6F1F6',
+    border: '#E0D9E2',
+    muted: '#EDE7EE',
+    subtle: '#E4DCE6',
+    text: '#241B30',
+    textSecondary: '#6A5F76',
+    textTertiary: '#A79CAE',
+    accent: '#7C5CFF',
+    accentLight: 'rgba(124,92,255,0.12)',
+  },
+  gradients: {
+    bg: ['#F3EEE9', '#EAE5F0', '#E6ECF3'],
+    accent: ['#7C5CFF', '#22D3EE', '#E879C9'],
+    card: ['rgba(255,255,255,0.65)', 'rgba(245,240,248,0.45)'],
+  },
+  preview: { bg: '#ECE7EF', surface: '#F6F1F6', accent: '#7C5CFF', card: '#EAE5F0' },
+};
+
+// ─── 21. Nebula Glass (Dark — iridescent on violet-black) ──────────────────
+// The same shimmer as Iridescence, glowing on a deep violet-black ground.
+const nebulaGlass: ThemeDefinition = {
+  id: 'nebula-glass',
+  name: 'Nebula Glass',
+  description: 'Iridescent glow on deep violet-black glass',
+  emoji: '🌌',
+  isDark: true,
+  colors: {
+    bg: '#0D0A1A',
+    surface: '#15112A',
+    card: '#1D1738',
+    border: '#2C2452',
+    muted: '#372C63',
+    subtle: '#473A7D',
+    text: '#EDE9FF',
+    textSecondary: '#A99FD6',
+    textTertiary: '#6E6498',
+    accent: '#A78BFA',
+    accentLight: 'rgba(167,139,250,0.18)',
+  },
+  gradients: {
+    bg: ['#0D0A1A', '#150F2E', '#1B1340'],
+    accent: ['#22D3EE', '#A78BFA', '#F472B6'],
+    card: ['rgba(40,30,80,0.55)', 'rgba(25,18,55,0.40)'],
+  },
+  preview: { bg: '#0D0A1A', surface: '#1D1738', accent: '#A78BFA', card: '#15112A' },
+};
+
 // ─── Master Registry ──────────────────────────────────────────────────────
 export const THEMES: ThemeDefinition[] = [
+  // Originals
   midnight,
-  ivory,
-  obsidian,
-  aurora,
-  ember,
-  galaxy,
-  ocean,
-  sand,
-  rose,
-  forest,
-  slate,
-  neon,
+  // ivory,
+  // obsidian,
+  // aurora,
+  // ember,
+  // galaxy,
+  // ocean,
+  // sand,
+  // rose,
+  // forest,
+  // slate,
+  // neon,
+  // // Classic / modern palettes
+  // mocha,
+  latte,
+  tokyoNight,
+  // nord,
+  // rosePine,
+  // rosePineDawn,
+  // Iridescent / holographic glass
+  prism,
+  iridescence,
+  nebulaGlass,
 ];
 
 export const THEME_MAP = Object.fromEntries(
@@ -320,3 +579,6 @@ export function getThemeById(id: string): ThemeDefinition {
 
 export const DARK_THEMES = THEMES.filter((t) => t.isDark);
 export const LIGHT_THEMES = THEMES.filter((t) => !t.isDark);
+
+// ─── Convenience: themes that ship an iridescent gradient ──────────────────
+export const GRADIENT_THEMES = THEMES.filter((t) => !!t.gradients);

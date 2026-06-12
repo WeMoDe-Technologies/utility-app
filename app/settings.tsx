@@ -162,7 +162,7 @@ export default function SettingsScreen() {
               colors={colors}
               accent={colors.accent}
             />
-            <Divider colors={colors} />
+            {/* <Divider colors={colors} />
             <ToggleRow
               icon="stats-chart"
               iconColor="#06B6D4"
@@ -172,7 +172,7 @@ export default function SettingsScreen() {
               onChange={prefs.setShowUsageCount}
               colors={colors}
               accent={colors.accent}
-            />
+            /> */}
           </View>
         </Animated.View>
 
@@ -195,11 +195,11 @@ export default function SettingsScreen() {
         <Animated.View entering={FadeInDown.delay(280).duration(350)}>
           <SectionTitle title="About" colors={colors} />
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <ActionRow icon="information-circle-outline" iconColor="#06B6D4" label="About UtilityKit"
-              description="Version 1.0.0 · 12 Themes · 16 Utilities"
+            {/* <ActionRow icon="information-circle-outline" iconColor="#06B6D4" label="About ToolR"
+              description="All Utility Kit"
               onPress={() => Alert.alert('UtilityKit', 'Version 1.0.0\n16 Utilities · 12 Themes\nBuilt with Expo React Native')}
               colors={colors} showChevron />
-            <Divider colors={colors} />
+            <Divider colors={colors} /> */}
             <ActionRow icon="lock-closed-outline" iconColor="#10B981" label="Privacy Policy"
               onPress={() => Linking.openURL('https://example.com/privacy')} colors={colors} showChevron />
             <Divider colors={colors} />
@@ -217,9 +217,9 @@ export default function SettingsScreen() {
         <View style={styles.footer}>
           <Text style={styles.footerEmoji}>{activeTheme.emoji}</Text>
           <Text style={[styles.footerVersion, { color: colors.textTertiary }]}>
-            UtilityKit v1.0.0 · {activeTheme.name} Theme
+            ToolR
           </Text>
-          <Text style={[styles.footerMade, { color: colors.textTertiary }]}>Made with ♥ using Expo</Text>
+          <Text style={[styles.footerMade, { color: colors.textTertiary }]}>WeMoDe Technologies</Text>
         </View>
         </Animated.View>
       </ScrollView>

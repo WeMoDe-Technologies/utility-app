@@ -82,8 +82,8 @@ export default function SettingsScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <Animated.View
-        entering={FadeIn.duration(200)}
+      <Animated.View entering={FadeIn.duration(200)}>
+      <View
         style={[
           styles.header,
           { backgroundColor: colors.surface, paddingTop: top + 6, borderBottomColor: colors.border },
@@ -97,6 +97,7 @@ export default function SettingsScreen() {
           <Text style={[styles.headerTitle, { color: colors.text }]}>Settings</Text>
         </View>
         <View style={{ width: 36 }} />
+      </View>
       </Animated.View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -205,12 +206,14 @@ export default function SettingsScreen() {
         </Animated.View>
 
         {/* Footer */}
-        <Animated.View entering={FadeInDown.delay(340).duration(350)} style={styles.footer}>
+        <Animated.View entering={FadeInDown.delay(340).duration(350)}>
+        <View style={styles.footer}>
           <Text style={styles.footerEmoji}>{activeTheme.emoji}</Text>
           <Text style={[styles.footerVersion, { color: colors.textTertiary }]}>
             UtilityKit v1.0.0 · {activeTheme.name} Theme
           </Text>
           <Text style={[styles.footerMade, { color: colors.textTertiary }]}>Made with ♥ using Expo</Text>
+        </View>
         </Animated.View>
       </ScrollView>
     </View>

@@ -11,11 +11,13 @@ interface PreferencesState {
   // hapticFeedback is an alias for hapticsEnabled — used by components
   hapticFeedback: boolean;
   showUsageCount: boolean;
+  onboardingCompleted: boolean;
   // ── Actions ──
   setThemeId: (id: ThemeId) => void;
   setHapticsEnabled: (v: boolean) => void;
   setHapticFeedback: (v: boolean) => void;  // alias for setHapticsEnabled
   setShowUsageCount: (v: boolean) => void;
+  setOnboardingCompleted: (v: boolean) => void;
   hydrate: () => Promise<void>;
 }
 
@@ -23,6 +25,7 @@ const DEFAULTS = {
   themeId: 'midnight' as ThemeId,
   hapticsEnabled: true,
   showUsageCount: true,
+  onboardingCompleted: false,
 };
 
 export const usePreferencesStore = create<PreferencesState>((set, get) => ({
@@ -51,6 +54,11 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     saveJSON(StorageKeys.PREFERENCES, { ...get(), showUsageCount });
   },
 
+  setOnboardingCompleted: (onboardingCompleted) => {
+    set({ onboardingCompleted });
+    saveJSON(StorageKeys.PREFERENCES, { ...get(), onboardingCompleted });
+  },
+
   hydrate: async () => {
     const saved = await loadJSON(StorageKeys.PREFERENCES, DEFAULTS);
     const hapticsEnabled = saved.hapticsEnabled ?? DEFAULTS.hapticsEnabled;
@@ -59,6 +67,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       hapticsEnabled,
       hapticFeedback: hapticsEnabled,
       showUsageCount: saved.showUsageCount ?? DEFAULTS.showUsageCount,
+      onboardingCompleted: saved.onboardingCompleted ?? DEFAULTS.onboardingCompleted,
     });
   },
 }));

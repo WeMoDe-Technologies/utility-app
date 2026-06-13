@@ -2,15 +2,15 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: 'UtilityKit',
-  slug: 'utility-kit',
+  name: 'ToolR',
+  slug: 'tool-r',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'automatic',
   splash: {
     image: './assets/splash.png',
-    resizeMode: 'contain',
+    resizeMode: 'cover',
     backgroundColor: '#0A0A0F',
   },
   plugins: [
@@ -43,7 +43,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   extra: {
     "eas": {
-        "projectId": "7f081d5e-0cbf-49bc-9690-a578295fe85c"
+        "projectId": "37e22009-6961-4bc8-a23c-1d55a4f51965"
       }
   },
 });

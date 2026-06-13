@@ -3,6 +3,7 @@ import {
   StyleSheet,
   View,
   Text,
+  Image,
   ScrollView,
   Pressable,
 } from 'react-native';
@@ -34,18 +35,15 @@ import { spacing, typography, radius } from '@/theme';
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 type UtilityEntry = typeof UTILITY_REGISTRY[number];
 
-// ─── Toolr wordmark logo ─────────────────────────────────────────────────────
-// A compact "T" glyph mark in a rounded square, matching app accent colour
-function ToolrMark({ accent, bg }: { accent: string; bg: string }) {
+// ─── Toolr mark — app icon ───────────────────────────────────────────────────
+// Renders the app icon (assets/icon.png) at the same 34×34 footprint as before
+function ToolrMark() {
   return (
-    <Svg width={34} height={34} viewBox="0 0 34 34">
-      {/* Rounded square background */}
-      <Rect x={0} y={0} width={34} height={34} rx={10} fill={accent} />
-      {/* Bold "T" crossbar */}
-      <Rect x={7} y={9} width={20} height={4} rx={2} fill={bg} />
-      {/* Bold "T" stem */}
-      <Rect x={15} y={9} width={4} height={17} rx={2} fill={bg} />
-    </Svg>
+    <Image
+      source={require('../assets/icon.png')}
+      style={styles.brandMark}
+      resizeMode="contain"
+    />
   );
 }
 
@@ -155,7 +153,7 @@ export default function HomeScreen() {
 
           {/* Left: mark + wordmark stacked */}
           <View style={styles.brandRow}>
-            <ToolrMark accent={accent} bg={colors.surface} />
+            <ToolrMark />
             <View style={styles.wordmarkCol}>
               <Text
                 style={[
@@ -166,7 +164,7 @@ export default function HomeScreen() {
                   },
                 ]}
               >
-                Toolr
+                ToolR
               </Text>
               <Text
                 style={[
@@ -255,6 +253,11 @@ const styles = StyleSheet.create({
   },
 
   // Brand
+  brandMark: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+  },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',

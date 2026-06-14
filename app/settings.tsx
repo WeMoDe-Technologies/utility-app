@@ -201,14 +201,14 @@ export default function SettingsScreen() {
               colors={colors} showChevron />
             <Divider colors={colors} /> */}
             <ActionRow icon="lock-closed-outline" iconColor="#10B981" label="Privacy Policy"
-              onPress={() => Linking.openURL('https://example.com/privacy')} colors={colors} showChevron />
+              onPress={() => Linking.openURL('https://www.wemodetechnologies.com/en/privacy')} colors={colors} showChevron />
             <Divider colors={colors} />
             <ActionRow icon="chatbubble-outline" iconColor="#8B5CF6" label="Send Feedback"
-              onPress={() => Linking.openURL('mailto:feedback@utilitykit.app')} colors={colors} showChevron />
+              onPress={() => Linking.openURL('mailto:wemodetechnologies@gmail.com')} colors={colors} showChevron />
             <Divider colors={colors} />
-            <ActionRow icon="star" iconColor="#F59E0B" label="Rate UtilityKit"
+            {/* <ActionRow icon="star" iconColor="#F59E0B" label="Rate UtilityKit"
               description="Love the app? Rate us ⭐"
-              onPress={() => Linking.openURL('https://apps.apple.com')} colors={colors} showChevron />
+              onPress={() => Linking.openURL('https://apps.apple.com')} colors={colors} showChevron /> */}
           </View>
         </Animated.View>
 

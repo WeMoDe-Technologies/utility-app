@@ -30,11 +30,11 @@ import * as Haptics from 'expo-haptics';
 import { UtilityHeader } from '@/components/common/UtilityHeader';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useUtilityState } from '@/hooks/useUtilityState';
-import { spacing, radius, typography } from '@/theme';
+import { spacing, radius, typography, border } from '@/theme';
 import type { NotesState, NoteItem } from '@/types';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
-const ACCENT = '#F43F5E';
+const ACCENT = '#A6392B';
 const { width: SW } = Dimensions.get('window');
 const CARD_GAP = 10;
 const CARD_W   = (SW - spacing.base * 2 - CARD_GAP) / 2;
@@ -140,7 +140,7 @@ function StickyCard({
 
             <View style={styles.stickyActions}>
               {note.isFavorite && (
-                <Ionicons name="star" size={12} color="#F59E0B" style={{ marginRight: 4 }} />
+                <Ionicons name="star" size={12} color="#C2902B" style={{ marginRight: 4 }} />
               )}
               <Pressable onPress={onPin} hitSlop={10} style={styles.stickyActionBtn}>
                 <Ionicons
@@ -381,7 +381,7 @@ function NoteEditorModal({
                 <Ionicons
                   name={draft.isFavorite ? 'star' : 'star-outline'}
                   size={18}
-                  color={draft.isFavorite ? '#F59E0B' : subClr}
+                  color={draft.isFavorite ? '#C2902B' : subClr}
                 />
               </Pressable>
 
@@ -762,7 +762,7 @@ const styles = StyleSheet.create({
   searchBox: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    borderRadius: radius.lg, borderWidth: 1,
+    borderRadius: radius.lg, borderWidth: border.base,
   },
   searchInput: { flex: 1, fontSize: typography.sizes.base, paddingVertical: 0 },
   cancelBtn: { paddingVertical: spacing.xs },
@@ -778,11 +778,6 @@ const styles = StyleSheet.create({
   stickyCard: {
     borderRadius: 14,
     padding: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
-    elevation: 3,
     gap: 6,
   },
   stickyTop: {
@@ -845,8 +840,6 @@ const styles = StyleSheet.create({
   fabInner: {
     width: 56, height: 56, borderRadius: 28,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: ACCENT,
-    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 12, elevation: 8,
   },
 
@@ -868,7 +861,7 @@ const styles = StyleSheet.create({
   modalCharCount: { fontSize: 11, marginRight: 4 },
   modalSaveBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 6,
-    borderRadius: radius.full, minWidth: 50,
+    borderRadius: radius.sm, minWidth: 50,
     alignItems: 'center', justifyContent: 'center',
     marginLeft: 4,
   },
@@ -899,7 +892,7 @@ const styles = StyleSheet.create({
   catRow: { flexGrow: 0 },
   catChip: {
     paddingHorizontal: spacing.md, paddingVertical: 5,
-    borderRadius: radius.full, borderWidth: 1, marginRight: spacing.xs,
+    borderRadius: radius.sm, borderWidth: border.base, marginRight: spacing.xs,
   },
   catChipTxt: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
 
@@ -938,7 +931,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 6,
     marginTop: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    borderRadius: radius.md, borderWidth: 1,
+    borderRadius: radius.md, borderWidth: border.base,
   },
   unsavedDot: { width: 6, height: 6, borderRadius: 3 },
   unsavedTxt: { fontSize: 12, fontWeight: '600' },

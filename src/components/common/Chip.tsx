@@ -16,7 +16,7 @@ export function Chip({
   label,
   selected,
   onPress,
-  accent = '#6366F1',
+  accent = '#3C5A7D',
   size = 'md',
   style,
 }: ChipProps) {
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 1,
-    borderRadius: radius.full,
+    borderRadius: radius.sm,
     borderWidth: 1,
   },
   chipSm: {

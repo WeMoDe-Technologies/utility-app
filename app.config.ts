@@ -2,7 +2,7 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: 'ToolR',
+  name: 'Kit',
   slug: 'tool-r',
   version: '1.0.0',
   orientation: 'portrait',
@@ -10,19 +10,19 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   userInterfaceStyle: 'automatic',
   splash: {
     image: './assets/splash.png',
-    resizeMode: 'cover',
-    backgroundColor: '#0A0A0F',
+    resizeMode: 'contain',
+    backgroundColor: '#EDEAE1',
   },
   plugins: [
     'expo-router',
     'expo-font',
-    ["expo-av", { "microphonePermission": "Used to measure ambient noise levels." }],
-    ["expo-location", { "locationWhenInUsePermission": "Used to display your GPS coordinates." }],
+    ["expo-av", { "microphonePermission": "Kit uses the microphone to estimate ambient noise levels. No audio is recorded or uploaded." }],
+    ["expo-location", { "locationWhenInUsePermission": "Kit uses your location for the compass heading and coordinates. It stays on your device." }],
     'expo-camera',
     [
       'expo-barcode-scanner',
       {
-        cameraPermission: 'Allow UtilityKit to access camera for QR scanning.',
+        cameraPermission: 'Allow Kit to access the camera to scan QR codes and barcodes.',
       },
     ],
   ],
@@ -30,7 +30,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#0A0A0F',
+      backgroundColor: '#EDEAE1',
     },
     package: 'com.utilitykit.app',
   },
@@ -38,7 +38,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supportsTablet: false,
     bundleIdentifier: 'com.utilitykit.app',
     infoPlist: {
-      NSCameraUsageDescription: 'Camera is used for QR code scanning.',
+      NSCameraUsageDescription: 'Kit uses the camera to scan QR codes and barcodes. Nothing is recorded or uploaded.',
     },
   },
   extra: {

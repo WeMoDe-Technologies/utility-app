@@ -21,7 +21,7 @@ interface LabelledInputProps extends TextInputProps {
 
 export const LabelledInput = forwardRef<TextInput, LabelledInputProps>(
   function LabelledInput(
-    { label, accent = '#6366F1', error, hint, prefix, suffix, style, ...rest },
+    { label, accent = '#3C5A7D', error, hint, prefix, suffix, style, ...rest },
     ref
   ) {
     const { colors } = useTheme();
@@ -42,7 +42,7 @@ export const LabelledInput = forwardRef<TextInput, LabelledInputProps>(
 
     const borderColor = borderAnim.interpolate({
       inputRange: [0, 1],
-      outputRange: [error ? '#F43F5E' : colors.border, error ? '#F43F5E' : accent],
+      outputRange: [error ? '#A6392B' : colors.border, error ? '#A6392B' : accent],
     });
 
     return (
@@ -72,7 +72,7 @@ export const LabelledInput = forwardRef<TextInput, LabelledInputProps>(
           )}
         </Animated.View>
         {(error || hint) && (
-          <Text style={[styles.helper, { color: error ? '#F43F5E' : colors.textTertiary }]}>
+          <Text style={[styles.helper, { color: error ? '#A6392B' : colors.textTertiary }]}>
             {error ?? hint}
           </Text>
         )}

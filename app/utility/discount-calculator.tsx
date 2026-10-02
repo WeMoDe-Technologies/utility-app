@@ -1,210 +1,232 @@
 import React, { useMemo } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ScrollView,
-} from 'react-native';
+import { StyleSheet, View, Text, ScrollView } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
 
 import { UtilityHeader } from '@/components/common/UtilityHeader';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useUtilityState } from '@/hooks/useUtilityState';
-import { spacing, radius, typography } from '@/theme';
-import type { DiscountCalculatorState } from '@/types';
+import { usePreferencesStore } from '@/stores/preferencesStore';
+import { Card, FieldLabel, NumericField, Notice, Pill, StatTile } from '@/components/ui';
+import { formatCurrency, currencySymbol, parseAmount } from '@/utils/format';
+import { spacing, radius, typography, border } from '@/theme';
 
-const DEFAULT_STATE: DiscountCalculatorState = {
+const ACCENT = '#4C6B3C';
+const QUICK_DISCOUNTS = [5, 10, 15, 20, 25, 30, 40, 50, 60, 70];
+
+interface DiscountState {
+  originalPrice: string;
+  discountPercent: string;
+  /** Second (extra) discount applied on the already-discounted price. */
+  extraPercent: string;
+  /** Independent input for the reverse calculator. */
+  reversePrice: string;
+}
+
+const DEFAULT_STATE: DiscountState = {
   originalPrice: '',
   discountPercent: '',
-  result: '',
+  extraPercent: '',
+  reversePrice: '',
 };
-
-const QUICK_DISCOUNTS = [5, 10, 15, 20, 25, 30, 40, 50, 60, 70];
 
 export default function DiscountCalculatorScreen() {
   const { colors } = useTheme();
-  const { state, setState, clearState } = useUtilityState<DiscountCalculatorState>(
+  const currency = usePreferencesStore((s) => s.currency);
+  const { state, setState, clearState } = useUtilityState<DiscountState>(
     'discountCalculator',
-    DEFAULT_STATE
+    DEFAULT_STATE,
   );
 
+  const price = parseAmount(state.originalPrice);
+  const discount = parseAmount(state.discountPercent);
+  const extra = parseAmount(state.extraPercent);
+
+  const fmt = (n: number) => formatCurrency(n, currency, { trimWholeNumbers: true });
+
   const calculation = useMemo(() => {
-    const price = parseFloat(state.originalPrice);
-    const discount = parseFloat(state.discountPercent);
-    if (isNaN(price) || isNaN(discount) || price <= 0) return null;
-    const saving = (price * discount) / 100;
-    const finalPrice = price - saving;
-    return { saving, finalPrice, effectiveRate: discount };
-  }, [state.originalPrice, state.discountPercent]);
+    if (!(price > 0) || isNaN(discount) || discount < 0 || discount > 100) return null;
 
-  const handleQuickDiscount = (pct: number) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setState((p) => ({ ...p, discountPercent: pct.toString() }));
-  };
+    const afterFirst = price * (1 - discount / 100);
+    const hasExtra = !isNaN(extra) && extra > 0 && extra <= 100;
+    const finalPrice = hasExtra ? afterFirst * (1 - extra / 100) : afterFirst;
 
-  // Reverse: find original price from discounted price
-  const reverseCalc = useMemo(() => {
-    const discounted = parseFloat(state.result);
-    const discount = parseFloat(state.discountPercent);
-    if (isNaN(discounted) || isNaN(discount)) return null;
-    const original = (discounted * 100) / (100 - discount);
-    return original;
-  }, [state.result, state.discountPercent]);
+    const saving = price - finalPrice;
+    // Two stacked discounts are NOT additive — 20% then 10% is 28%, not 30%
+    const effectiveRate = (saving / price) * 100;
+
+    return { afterFirst, finalPrice, saving, effectiveRate, hasExtra };
+  }, [price, discount, extra]);
+
+  const validation = useMemo(() => {
+    if (!state.originalPrice && !state.discountPercent) return null;
+    if (!(price > 0)) return 'Enter a price greater than zero.';
+    if (isNaN(discount)) return 'Enter a discount percentage.';
+    if (discount < 0 || discount > 100) return 'Discount must be between 0% and 100%.';
+    if (!isNaN(extra) && (extra < 0 || extra > 100)) return 'The extra discount must be between 0% and 100%.';
+    return null;
+  }, [state.originalPrice, state.discountPercent, price, discount, extra]);
+
+  // Reverse: recover the pre-discount price from the price on the tag
+  type Reverse = { kind: 'value'; value: number } | { kind: 'error'; message: string };
+  const reverse = useMemo<Reverse | null>(() => {
+    const discounted = parseAmount(state.reversePrice);
+    if (!(discounted > 0) || isNaN(discount)) return null;
+    if (discount >= 100) {
+      return { kind: 'error', message: 'A 100% discount has no original price to recover.' };
+    }
+    if (discount <= 0) return null;
+    return { kind: 'value', value: (discounted * 100) / (100 - discount) };
+  }, [state.reversePrice, discount]);
+
+  const payPct = calculation ? Math.max(0, 100 - calculation.effectiveRate) : 100;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.bg }]} edges={['bottom']}>
       <UtilityHeader
-        title="Discount Calculator"
+        title="Discount"
         utilityId="discountCalculator"
-        accentColor="#10B981"
+        accentColor={ACCENT}
+        subtitle={calculation ? `Effective ${calculation.effectiveRate.toFixed(1)}% off` : undefined}
         onClearData={clearState}
       />
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {/* Input */}
-        <Animated.View
-          entering={FadeInDown.delay(50).duration(300)}
-          style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        >
-          <View>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>Original Price (₹)</Text>
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
-              value={state.originalPrice}
-              onChangeText={(v) => setState((p) => ({ ...p, originalPrice: v }))}
-              placeholder="e.g. 1999"
-              placeholderTextColor={colors.textTertiary}
-              keyboardType="decimal-pad"
-            />
-          </View>
-
-          <View>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>Discount (%)</Text>
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
-              value={state.discountPercent}
-              onChangeText={(v) => setState((p) => ({ ...p, discountPercent: v }))}
-              placeholder="e.g. 20"
-              placeholderTextColor={colors.textTertiary}
-              keyboardType="decimal-pad"
-            />
-          </View>
-
-          {/* Quick discount buttons */}
-          <View>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>Quick Select</Text>
-            <View style={styles.quickRow}>
-              {QUICK_DISCOUNTS.map((pct) => (
-                <Pressable
-                  key={pct}
-                  onPress={() => handleQuickDiscount(pct)}
-                  style={[
-                    styles.quickChip,
-                    {
-                      backgroundColor:
-                        state.discountPercent === pct.toString() ? '#10B981' : colors.muted,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.quickChipText,
-                      {
-                        color:
-                          state.discountPercent === pct.toString() ? '#fff' : colors.textSecondary,
-                      },
-                    ]}
-                  >
-                    {pct}%
-                  </Text>
-                </Pressable>
-              ))}
+        <Animated.View entering={FadeInDown.delay(40).duration(280)}>
+          <Card>
+            <View>
+              <FieldLabel>Original price</FieldLabel>
+              <NumericField
+                value={state.originalPrice}
+                onChangeText={(v) => setState((p) => ({ ...p, originalPrice: v }))}
+                placeholder="0"
+                prefix={currencySymbol(currency)}
+                accent={ACCENT}
+                size="lg"
+              />
             </View>
-          </View>
+
+            <View>
+              <FieldLabel>Discount</FieldLabel>
+              <NumericField
+                value={state.discountPercent}
+                onChangeText={(v) => setState((p) => ({ ...p, discountPercent: v }))}
+                placeholder="0"
+                suffix="%"
+                accent={ACCENT}
+              />
+              <View style={styles.quickRow}>
+                {QUICK_DISCOUNTS.map((pct) => (
+                  <Pill
+                    key={pct}
+                    label={`${pct}%`}
+                    accent={ACCENT}
+                    active={discount === pct}
+                    onPress={() => setState((p) => ({ ...p, discountPercent: String(pct) }))}
+                  />
+                ))}
+              </View>
+            </View>
+
+            <View>
+              <FieldLabel>Extra discount at checkout (optional)</FieldLabel>
+              <NumericField
+                value={state.extraPercent}
+                onChangeText={(v) => setState((p) => ({ ...p, extraPercent: v }))}
+                placeholder="0"
+                suffix="%"
+                accent={ACCENT}
+              />
+            </View>
+
+            {validation && <Notice text={validation} tone="warn" />}
+          </Card>
         </Animated.View>
 
-        {/* Result */}
         {calculation && (
-          <Animated.View entering={FadeInDown.delay(80).duration(400)} style={{ gap: spacing.sm }}>
-            {/* Final Price Hero */}
-            <View style={[styles.heroPriceCard, { backgroundColor: '#10B98115', borderColor: '#10B98130' }]}>
-              <Text style={[styles.heroPriceLabel, { color: '#10B981' }]}>YOU PAY</Text>
-              <Text style={[styles.heroPrice, { color: colors.text }]}>
-                ₹{calculation.finalPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+          <Animated.View entering={FadeInDown.duration(320)} style={styles.results}>
+            <Card tone="accent" accent={ACCENT} style={styles.heroCard}>
+              <Text style={[styles.heroLabel, { color: ACCENT }]}>YOU PAY</Text>
+              <Text
+                style={[styles.heroPrice, { color: colors.text }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.5}
+              >
+                {fmt(calculation.finalPrice)}
               </Text>
-            </View>
+              <Text style={[styles.heroStrike, { color: colors.textTertiary }]}>
+                {fmt(price)}
+              </Text>
+            </Card>
 
-            {/* Breakdown row */}
-            <View style={styles.breakRow}>
-              <View style={[styles.breakCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.breakLabel, { color: colors.textSecondary }]}>Original</Text>
-                <Text style={[styles.breakValue, { color: colors.text }]}>
-                  ₹{parseFloat(state.originalPrice).toLocaleString('en-IN')}
-                </Text>
-              </View>
-              <View style={[styles.breakCard, { backgroundColor: '#F43F5E12', borderColor: '#F43F5E30' }]}>
-                <Text style={[styles.breakLabel, { color: colors.textSecondary }]}>You Save</Text>
-                <Text style={[styles.breakValue, { color: '#F43F5E' }]}>
-                  ₹{calculation.saving.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                </Text>
-              </View>
-            </View>
-
-            {/* Savings bar */}
-            <View style={[styles.savingsBar, { backgroundColor: colors.muted }]}>
-              <View
-                style={[
-                  styles.savingsFill,
-                  {
-                    backgroundColor: '#10B981',
-                    width: `${100 - calculation.effectiveRate}%`,
-                  },
-                ]}
+            <View style={styles.tiles}>
+              <StatTile label="You save" value={fmt(calculation.saving)} color="#A6392B" />
+              <StatTile
+                label="Effective off"
+                value={`${calculation.effectiveRate.toFixed(1)}%`}
+                color={ACCENT}
               />
-              <View style={[styles.savingsFill, { backgroundColor: '#F43F5E', flex: 1 }]} />
             </View>
-            <View style={styles.barLegend}>
-              <Text style={{ color: '#10B981', fontSize: 12, fontWeight: '600' }}>
-                Pay {(100 - calculation.effectiveRate).toFixed(1)}%
-              </Text>
-              <Text style={{ color: '#F43F5E', fontSize: 12, fontWeight: '600' }}>
-                Save {calculation.effectiveRate}%
-              </Text>
-            </View>
+
+            {calculation.hasExtra && (
+              <Notice
+                tone="info"
+                text={`Stacked discounts compound: ${discount}% then ${extra}% is ${calculation.effectiveRate.toFixed(1)}% off, not ${(discount + extra).toFixed(0)}%.`}
+              />
+            )}
+
+            <Card>
+              <View style={[styles.savingsBar, { backgroundColor: colors.muted }]}>
+                <View style={[styles.savingsFill, { backgroundColor: ACCENT, width: `${payPct}%` }]} />
+                <View style={[styles.savingsFill, { backgroundColor: '#A6392B', flex: 1 }]} />
+              </View>
+              <View style={styles.barLegend}>
+                <Text style={[styles.legendTxt, { color: ACCENT }]}>Pay {payPct.toFixed(1)}%</Text>
+                <Text style={[styles.legendTxt, { color: '#A6392B' }]}>
+                  Save {calculation.effectiveRate.toFixed(1)}%
+                </Text>
+              </View>
+              {calculation.hasExtra && (
+                <View style={styles.stepRow}>
+                  <Text style={[styles.stepLabel, { color: colors.textSecondary }]}>
+                    After {discount}% off
+                  </Text>
+                  <Text style={[styles.stepValue, { color: colors.text }]}>{fmt(calculation.afterFirst)}</Text>
+                </View>
+              )}
+            </Card>
           </Animated.View>
         )}
 
-        {/* Reverse Calculator */}
-        <Animated.View
-          entering={FadeInDown.delay(120).duration(300)}
-          style={[styles.reverseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        >
-          <Text style={[styles.reverseTitle, { color: colors.text }]}>
-            Reverse Calculator
-          </Text>
-          <Text style={[styles.reverseSubtitle, { color: colors.textSecondary }]}>
-            Find original price from discounted price
-          </Text>
-          <TextInput
-            style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card, marginTop: spacing.sm }]}
-            value={state.result}
-            onChangeText={(v) => setState((p) => ({ ...p, result: v }))}
-            placeholder="Discounted price (₹)"
-            placeholderTextColor={colors.textTertiary}
-            keyboardType="decimal-pad"
-          />
-          {reverseCalc && (
-            <View style={[styles.reverseResult, { backgroundColor: '#6366F112', borderColor: '#6366F130' }]}>
-              <Text style={[styles.reverseResultLabel, { color: colors.textSecondary }]}>Original Price</Text>
-              <Text style={[styles.reverseResultValue, { color: '#6366F1' }]}>
-                ₹{reverseCalc.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+        {/* Reverse calculator */}
+        <Animated.View entering={FadeInDown.delay(120).duration(280)}>
+          <Card>
+            <View>
+              <Text style={[styles.reverseTitle, { color: colors.text }]}>Reverse calculator</Text>
+              <Text style={[styles.reverseSubtitle, { color: colors.textSecondary }]}>
+                Know the sale price? Find what it was before the {isNaN(discount) ? '—' : `${discount}%`} discount.
               </Text>
             </View>
-          )}
+            <NumericField
+              value={state.reversePrice}
+              onChangeText={(v) => setState((p) => ({ ...p, reversePrice: v }))}
+              placeholder="Sale price"
+              prefix={currencySymbol(currency)}
+              accent="#3C5A7D"
+            />
+            {reverse?.kind === 'error' && <Notice text={reverse.message} tone="warn" />}
+            {reverse?.kind === 'value' && (
+              <View style={[styles.reverseResult, { backgroundColor: '#3C5A7D12', borderColor: '#3C5A7D30' }]}>
+                <Text style={[styles.reverseResultLabel, { color: colors.textSecondary }]}>
+                  Original price
+                </Text>
+                <Text style={[styles.reverseResultValue, { color: '#3C5A7D' }]}>
+                  {fmt(reverse.value)}
+                </Text>
+              </View>
+            )}
+          </Card>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
@@ -213,63 +235,36 @@ export default function DiscountCalculatorScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  content: { padding: spacing.base, gap: spacing.base, paddingBottom: 40 },
-  card: { borderRadius: radius.xl, borderWidth: 1, padding: spacing.base, gap: spacing.base },
-  label: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
-  input: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  quickChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-  },
-  quickChipText: { fontSize: 13, fontWeight: '700' },
-  heroPriceCard: {
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    padding: spacing.xl,
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  heroPriceLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 2 },
-  heroPrice: { fontSize: 44, fontWeight: '800', letterSpacing: -1 },
-  breakRow: { flexDirection: 'row', gap: spacing.sm },
-  breakCard: {
-    flex: 1,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    padding: spacing.base,
-    gap: 4,
-  },
-  breakLabel: { fontSize: 12 },
-  breakValue: { fontSize: 20, fontWeight: '800' },
-  savingsBar: {
-    height: 8,
-    borderRadius: 4,
-    flexDirection: 'row',
-    overflow: 'hidden',
-  },
+  content: { padding: spacing.base, gap: spacing.base, paddingBottom: 48 },
+
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
+
+  results: { gap: spacing.sm },
+  heroCard: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xl },
+  heroLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
+  heroPrice: { fontSize: 44, fontWeight: '800', letterSpacing: -1.5 },
+  heroStrike: { fontSize: typography.sizes.base, textDecorationLine: 'line-through' },
+
+  tiles: { flexDirection: 'row', gap: spacing.sm },
+
+  savingsBar: { height: 10, borderRadius: radius.sm, flexDirection: 'row', overflow: 'hidden' },
   savingsFill: { height: '100%' },
   barLegend: { flexDirection: 'row', justifyContent: 'space-between' },
-  reverseCard: { borderRadius: radius.xl, borderWidth: 1, padding: spacing.base, gap: spacing.xs },
-  reverseTitle: { fontSize: 16, fontWeight: '700' },
-  reverseSubtitle: { fontSize: 13 },
+  legendTxt: { fontSize: 12, fontWeight: '700' },
+  stepRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  stepLabel: { fontSize: typography.sizes.sm },
+  stepValue: { fontSize: typography.sizes.sm, fontWeight: '700' },
+
+  reverseTitle: { fontSize: typography.sizes.md, fontWeight: '700' },
+  reverseSubtitle: { fontSize: typography.sizes.sm, marginTop: 2, lineHeight: 18 },
   reverseResult: {
     borderRadius: radius.lg,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.xs,
   },
-  reverseResultLabel: { fontSize: 14 },
+  reverseResultLabel: { fontSize: typography.sizes.sm },
   reverseResultValue: { fontSize: 22, fontWeight: '800' },
 });

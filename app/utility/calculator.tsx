@@ -7,432 +7,366 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
-import Animated, {
-  FadeInDown,
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 
-import { UtilityHeader } from '@/components/common/UtilityHeader';
+import { UtilityHeader, HeaderKey } from '@/components/common/UtilityHeader';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useUtilityState } from '@/hooks/useUtilityState';
-import { spacing, radius } from '@/theme';
+import { Plate, PressablePlate, useHaptic, toast, onColour } from '@/components/ui';
+import { spacing, radius, typography, border, plate } from '@/theme';
+import { evaluateExpression, formatResult, appendToken, endsWithOperator } from '@/utils/expression';
 import type { SimpleCalculatorState } from '@/types';
 
-// ─── Accent ────────────────────────────────────────────────────────────────
-const ACCENT = '#8B5CF6';
+const ACCENT = '#E2561E';
 
-// ─── Layout: 4 columns ─────────────────────────────────────────────────────
+// ─── Layout: a plain 4×5 grid, sized from the screen width ─────────────────
 const { width: SCREEN_W } = Dimensions.get('window');
 const COLS  = 4;
 const H_PAD = spacing.base;
 const GAP   = 12;
-// Square button size derived purely from width
 const BTN   = (SCREEN_W - H_PAD * 2 - GAP * (COLS - 1)) / COLS;
 
-// ─── Types ─────────────────────────────────────────────────────────────────
-// 'op'   → accent-tinted bg, accent text  (operators + =)
-// 'util' → slightly tinted bg             (C, ⌫, %)
-// 'num'  → surface bg, primary text       (digits + .)
-type Variant = 'op' | 'util' | 'num';
+type Variant = 'op' | 'util' | 'num' | 'equals';
+type BtnDef = { label: string; variant: Variant };
 
-type BtnDef = {
-  label:   string;
-  variant: Variant;
-  rowSpan?: number;   // vertical span (used for = button)
-  span?:   number;    // horizontal span
-};
-
-// ─── Grid ──────────────────────────────────────────────────────────────────
-//
-//   Col →    0      1      2      3
-//   Row 0    C      ⌫      ÷      ×
-//   Row 1    7      8      9      −
-//   Row 2    4      5      6      +
-//   Row 3    1      2      3      = ↓ (rowSpan 2)
-//   Row 4    %      0      .      (= continues)
-//
-// The = button occupies col 3 rows 3+4. We handle it by rendering rows 3
-// and 4 together in a single "split" row (left 3 cols each row stacked,
-// right col = tall button).
-//
-// Implementation: render rows 0-2 normally (4 cols each), then a special
-// bottom section for rows 3+4 that uses absolute-height on = button.
-
-const TOP_ROWS: BtnDef[][] = [
+const GRID: BtnDef[][] = [
   [
     { label: 'C',   variant: 'util' },
     { label: '⌫',   variant: 'util' },
+    { label: '%',   variant: 'util' },
     { label: '÷',   variant: 'op'   },
-    { label: '×',   variant: 'op'   },
   ],
   [
-    { label: '7',   variant: 'num' },
-    { label: '8',   variant: 'num' },
-    { label: '9',   variant: 'num' },
-    { label: '−',   variant: 'op'  },
+    { label: '7', variant: 'num' },
+    { label: '8', variant: 'num' },
+    { label: '9', variant: 'num' },
+    { label: '×', variant: 'op'  },
   ],
   [
-    { label: '4',   variant: 'num' },
-    { label: '5',   variant: 'num' },
-    { label: '6',   variant: 'num' },
-    { label: '+',   variant: 'op'  },
+    { label: '4', variant: 'num' },
+    { label: '5', variant: 'num' },
+    { label: '6', variant: 'num' },
+    { label: '−', variant: 'op'  },
   ],
-];
-
-// bottom two rows rendered as a combined block so = can span both
-const BOT_LEFT_ROWS: BtnDef[][] = [
   [
     { label: '1', variant: 'num' },
     { label: '2', variant: 'num' },
     { label: '3', variant: 'num' },
+    { label: '+', variant: 'op'  },
   ],
   [
-    { label: '%', variant: 'util' },
-    { label: '0', variant: 'num'  },
-    { label: '.', variant: 'num'  },
+    { label: '±', variant: 'util'   },
+    { label: '0', variant: 'num'    },
+    { label: '.', variant: 'num'    },
+    { label: '=', variant: 'equals' },
   ],
 ];
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
-function fmt(n: number): string {
-  if (!isFinite(n) || isNaN(n)) return 'Error';
-  // Show up to 10 significant digits, strip trailing zeros
-  return Number(parseFloat(n.toFixed(10))).toString();
+interface CalcState extends SimpleCalculatorState {
+  /** Set when the last "=" failed, so the display can explain why. */
+  error?: string;
 }
 
-const DEFAULT_STATE: SimpleCalculatorState = {
+const DEFAULT_STATE: CalcState = {
   expression: '',
   result: '0',
   history: [],
 };
 
+/**
+ * Percent, the way a pocket calculator does it:
+ *   200 + 10%  → 200 + 20   (percentage *of the left operand*)
+ *   200 × 10%  → 200 × 0.1  (plain division by 100)
+ * Returns the rewritten expression, or null when there is nothing to convert.
+ */
+function applyPercent(expression: string, fallback: string): string | null {
+  const source = expression || fallback;
+  const match = source.match(/^(.*?)([+−×÷]?)(\d*\.?\d+)$/);
+  if (!match) return null;
+
+  const [, head, operator, numberStr] = match;
+  const value = parseFloat(numberStr);
+  if (isNaN(value)) return null;
+
+  if (operator === '+' || operator === '−') {
+    const base = evaluateExpression(head);
+    if (!base.ok) return null;
+    return `${head}${operator}${formatResult((base.value * value) / 100)}`;
+  }
+  return `${head}${operator}${formatResult(value / 100)}`;
+}
+
 // ─── Screen ────────────────────────────────────────────────────────────────
 export default function SimpleCalculatorScreen() {
-  const { colors } = useTheme();
-  const { state, setState, clearState } = useUtilityState<SimpleCalculatorState>(
-    'simpleCalculator',
+  const { colors, isDark } = useTheme();
+  const { state, setState, clearState } = useUtilityState<CalcState>(
+    'calculator',
     DEFAULT_STATE,
   );
+  const haptic = useHaptic();
   const [showHistory, setShowHistory] = useState(false);
 
   const handleButton = useCallback(
     (btn: string) => {
       if (!btn) return;
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      haptic(btn === '=' ? 'medium' : 'light');
 
       setState((prev) => {
         const { expression, result, history } = prev;
-        const curVal = () => parseFloat(expression || result);
 
         switch (btn) {
-          // ── Clear ──────────────────────────────────────────────────────
           case 'C':
-            return DEFAULT_STATE;
+            return { ...DEFAULT_STATE, history };
 
-          // ── Backspace ──────────────────────────────────────────────────
           case '⌫':
-            if (!expression) return prev;
-            return { ...prev, expression: expression.slice(0, -1) };
+            if (!expression) return { ...prev, error: undefined };
+            return { ...prev, expression: expression.slice(0, -1), error: undefined };
 
-          // ── Negate ─────────────────────────────────────────────────────
-          case '+/-': {
-            const n = parseFloat(expression || result);
-            if (isNaN(n)) return prev;
-            const neg = (-n).toString();
-            return expression
-              ? { ...prev, expression: neg }
-              : { ...prev, result: neg };
-          }
-
-          // ── Percent ────────────────────────────────────────────────────
-          case '%': {
-            const n = curVal();
-            if (isNaN(n)) return prev;
-            return { ...prev, expression: '', result: fmt(n / 100) };
-          }
-
-          // ── Evaluate ───────────────────────────────────────────────────
-          case '=': {
-            if (!expression) return prev;
-            try {
-              const sanitized = expression
-                .replace(/÷/g, '/')
-                .replace(/×/g, '*')
-                .replace(/−/g, '-');
-              // eslint-disable-next-line no-eval
-              const raw = eval(sanitized);
-              const res = fmt(raw);
-              const entry = { expression, result: res, timestamp: Date.now() };
+          case '±': {
+            // Negate the number currently being typed (or the last result)
+            if (!expression) {
+              const n = parseFloat(result);
+              if (isNaN(n)) return prev;
+              return { ...prev, result: formatResult(-n), error: undefined };
+            }
+            // Already negated → unwrap, so ± toggles instead of nesting
+            const wrapped = expression.match(/\(-(\d*\.?\d+)\)$/);
+            if (wrapped) {
               return {
                 ...prev,
-                expression: '',
-                result: res,
-                history: [entry, ...history].slice(0, 50),
+                expression: expression.slice(0, wrapped.index) + wrapped[1],
+                error: undefined,
               };
-            } catch {
-              return { ...prev, expression: '', result: 'Error' };
             }
+            const m = expression.match(/(\d*\.?\d+)$/);
+            if (!m) return prev;
+            return {
+              ...prev,
+              expression: `${expression.slice(0, m.index)}(-${m[1]})`,
+              error: undefined,
+            };
           }
 
-          // ── Default: append token ──────────────────────────────────────
+          case '%': {
+            const next = applyPercent(expression, result);
+            if (!next) return prev;
+            return { ...prev, expression: next, error: undefined };
+          }
+
+          case '=': {
+            if (!expression) return prev;
+            const evaluated = evaluateExpression(expression);
+            if (!evaluated.ok) {
+              return { ...prev, error: evaluated.error };
+            }
+            const res = formatResult(evaluated.value);
+            return {
+              expression: '',
+              result: res,
+              error: undefined,
+              history: [
+                { expression, result: res, timestamp: Date.now() },
+                ...history,
+              ].slice(0, 50),
+            };
+          }
+
           default: {
             const OPERATORS = ['÷', '×', '−', '+'];
-            const isOperator = OPERATORS.includes(btn);
-            if (!expression) {
-              // expression empty = just evaluated or fresh start
-              // operator tap → seed with last result: "15" + "+" = "15+"
-              // digit tap → start fresh
-              const seed = isOperator ? result : '';
-              return { ...prev, expression: seed + btn };
+            // Starting with an operator continues from the last result
+            if (!expression && OPERATORS.includes(btn)) {
+              return { ...prev, expression: result + btn, error: undefined };
             }
-            return { ...prev, expression: expression + btn };
+            return { ...prev, expression: appendToken(expression, btn), error: undefined };
           }
         }
       });
     },
-    [setState],
+    [setState, haptic],
   );
 
-  // ── Button color helpers ─────────────────────────────────────────────────
+  const copyResult = useCallback(async () => {
+    const value = state.expression || state.result;
+    await Clipboard.setStringAsync(value);
+    haptic('success');
+    toast('Copied to clipboard');
+  }, [state.expression, state.result, haptic]);
+
+  // ── Button colours ───────────────────────────────────────────────────────
   const btnBg = (v: Variant): string => {
     switch (v) {
-      case 'op':   return colors.surface;   // same white as nums — diff only in text
-      case 'util': return colors.card;      // slightly darker
-      default:     return colors.surface;
+      case 'equals': return ACCENT;
+      case 'op':     return colors.surface;
+      case 'util':   return colors.muted;
+      default:       return colors.card;
     }
   };
   const btnFg = (v: Variant): string => {
     switch (v) {
-      case 'op': return ACCENT;             // accent-colored text for operators
-      default:   return colors.text;
+      case 'equals': return onColour(ACCENT);
+      case 'op':     return ACCENT;
+      case 'util':   return colors.textSecondary;
+      default:       return colors.text;
     }
   };
-  const utilFg = (v: Variant): string =>
-    v === 'util' ? colors.textSecondary : btnFg(v);
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-  // Tall = button height: 2 rows + 1 gap between them
-  const TALL_BTN_H = BTN * 2 + GAP;
+  const liveResult = state.expression && !endsWithOperator(state.expression)
+    ? evaluateExpression(state.expression)
+    : null;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.bg }]} edges={['bottom']}>
       <UtilityHeader
         title="Calculator"
-        utilityId="simpleCalculator"
+        utilityId="calculator"
         accentColor={ACCENT}
         onClearData={clearState}
+        rightAction={
+          state.history.length > 0 ? (
+            <HeaderKey
+              icon="time-outline"
+              label="Toggle calculation history"
+              fg={onColour(ACCENT)}
+              active={showHistory}
+              onPress={() => setShowHistory((s) => !s)}
+            />
+          ) : undefined
+        }
       />
 
-      {/* ── Display ───────────────────────────────────────────────────────── */}
-      <View style={styles.display}>
-        {/* History toggle */}
-        {state.history.length > 0 && (
-          <Pressable
-            onPress={() => setShowHistory((s) => !s)}
-            style={styles.historyToggle}
-          >
-            <Text style={[styles.historyToggleText, { color: colors.textTertiary }]}>
-              {showHistory ? 'Hide' : `${state.history.length} entries ›`}
-            </Text>
-          </Pressable>
-        )}
-
-        {/* History chips */}
-        {showHistory && (
+      {/* ── History strip ──────────────────────────────────────────────── */}
+      {showHistory && state.history.length > 0 && (
+        <Animated.View entering={FadeIn.duration(180)} style={[styles.historyBar, { borderBottomColor: colors.border }]}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.historyScroll}
-            style={styles.historyView}
           >
-            {state.history.slice(0, 8).map((h, i) => (
+            {state.history.slice(0, 12).map((h, i) => (
               <Pressable
-                key={i}
+                key={`${h.timestamp}-${i}`}
                 onPress={() => {
-                  setState((p) => ({ ...p, result: h.result, expression: '' }));
+                  haptic('light');
+                  setState((p) => ({ ...p, result: h.result, expression: '', error: undefined }));
                   setShowHistory(false);
                 }}
-                style={[
-                  styles.historyChip,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
+                style={[styles.historyChip, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
-                <Text style={[styles.historyExpr, { color: colors.textSecondary }]}>
+                <Text style={[styles.historyExpr, { color: colors.textTertiary }]} numberOfLines={1}>
                   {h.expression}
                 </Text>
-                <Text style={[styles.historyRes, { color: colors.text }]}>
+                <Text style={[styles.historyRes, { color: colors.text }]} numberOfLines={1}>
                   {h.result}
                 </Text>
               </Pressable>
             ))}
           </ScrollView>
-        )}
+        </Animated.View>
+      )}
 
-        {/* While typing: show expression large + last result small above.
-            After =   : expression clears, show computed result large. */}
-        {state.expression ? (
-          <>
-            <Text
-              style={[styles.expression, { color: colors.textTertiary }]}
-              numberOfLines={1}
-              ellipsizeMode="head"
-            >
-              {state.result !== '0' ? state.result : ' '}
-            </Text>
-            <Text
-              style={[styles.result, { color: colors.text }]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.3}
-            >
-              {state.expression}
-            </Text>
-          </>
-        ) : (
-          <>
-            <Text style={styles.expression}>{' '}</Text>
-            <Text
-              style={[styles.result, { color: colors.text }]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.3}
-            >
-              {state.result}
-            </Text>
-          </>
-        )}
-      </View>
+      {/* ── Readout ────────────────────────────────────────────────────── */}
+      <Pressable style={styles.display} onLongPress={copyResult} delayLongPress={350}>
+        <Plate
+          offset={plate.flush}
+          radius={radius.md}
+          borderWidth={border.base}
+          fill={colors.muted}
+          borderColor={colors.subtle}
+          contentStyle={styles.readout}
+        >
+          {/* Secondary line: live preview while typing, last result otherwise */}
+          <Text
+          style={[
+            styles.secondary,
+            { color: state.error ? '#A6392B' : colors.textTertiary },
+          ]}
+          numberOfLines={1}
+          ellipsizeMode="head"
+        >
+          {state.error
+            ? state.error
+            : liveResult?.ok
+              ? `= ${formatResult(liveResult.value)}`
+              : state.expression
+                ? ' '
+                : state.history[0]
+                  ? state.history[0].expression
+                  : ' '}
+        </Text>
 
-      {/* ── Divider ─────────────────────────────────────────────────────── */}
-      <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <Text
+          style={[styles.primary, { color: colors.text }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.3}
+          selectable
+        >
+          {state.expression || state.result}
+        </Text>
 
-      {/* ── Keypad ────────────────────────────────────────────────────────── */}
-      <Animated.View
-        entering={FadeInDown.delay(60).duration(280)}
-        style={styles.keypad}
-      >
-        {/* Top rows: 0–2, all 4 columns, uniform */}
-        {TOP_ROWS.map((row, ri) => (
+          <Text style={[styles.copyHint, { color: colors.textTertiary }]}>
+            Long press to copy
+          </Text>
+        </Plate>
+      </Pressable>
+
+      {/* ── Keypad ─────────────────────────────────────────────────────── */}
+      <Animated.View entering={FadeIn.duration(200)} style={styles.keypad}>
+        {GRID.map((row, ri) => (
           <View key={ri} style={styles.row}>
             {row.map((btn) => (
               <CalcButton
                 key={btn.label}
                 label={btn.label}
-                width={BTN}
-                height={BTN}
-                borderRadius={BTN / 2}
+                size={BTN}
                 bg={btnBg(btn.variant)}
-                fg={btn.variant === 'util' ? utilFg(btn.variant) : btnFg(btn.variant)}
-                colors={colors}
+                fg={btnFg(btn.variant)}
                 onPress={() => handleButton(btn.label)}
               />
             ))}
           </View>
         ))}
-
-        {/* Bottom block: rows 3+4 left (3 cols) + tall = right */}
-        <View style={styles.botBlock}>
-          {/* Left: two stacked rows of 3 */}
-          <View style={styles.botLeft}>
-            {BOT_LEFT_ROWS.map((row, ri) => (
-              <View key={ri} style={styles.row}>
-                {row.map((btn) => (
-                  <CalcButton
-                    key={btn.label}
-                    label={btn.label}
-                    width={BTN}
-                    height={BTN}
-                    borderRadius={BTN / 2}
-                    bg={btnBg(btn.variant)}
-                    fg={btn.variant === 'util' ? utilFg(btn.variant) : btnFg(btn.variant)}
-                    colors={colors}
-                    onPress={() => handleButton(btn.label)}
-                  />
-                ))}
-              </View>
-            ))}
-          </View>
-
-          {/* Right: tall = button */}
-          <CalcButton
-            label="="
-            width={BTN}
-            height={TALL_BTN_H}
-            borderRadius={BTN / 2}
-            bg={ACCENT}
-            fg="#fff"
-            colors={colors}
-            onPress={() => handleButton('=')}
-          />
-        </View>
       </Animated.View>
     </SafeAreaView>
   );
 }
 
 // ─── CalcButton ────────────────────────────────────────────────────────────
+/**
+ * A moulded key. It sits proud of the panel on its own hard shadow and sinks
+ * flush when pressed — the one interaction motif used throughout Kit.
+ */
 function CalcButton({
   label,
-  width,
-  height,
-  borderRadius,
+  size,
   bg,
   fg,
-  colors,
   onPress,
 }: {
   label: string;
-  width: number;
-  height: number;
-  borderRadius: number;
+  size: number;
   bg: string;
   fg: string;
-  colors: any;
   onPress: () => void;
 }) {
-  const scale = useSharedValue(1);
-  const anim  = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
-  const charCount = label.length;
-  const fs = charCount > 2 ? 14 : charCount > 1 ? 18 : 22;
-
   return (
-    <Animated.View style={[anim, { width, height }]}>
-      <Pressable
-        onPress={() => {
-          scale.value = withSpring(0.88, { damping: 14, stiffness: 300 }, () => {
-            scale.value = withSpring(1, { damping: 14, stiffness: 300 });
-          });
-          onPress();
-        }}
-        style={[
-          styles.btn,
-          {
-            width,
-            height,
-            borderRadius,
-            backgroundColor: bg,
-            // Subtle shadow for the neumorphic-light feel from the reference
-            shadowColor: colors.text,
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.06,
-            shadowRadius: 6,
-            elevation: 2,
-          },
-        ]}
-      >
-        <Text
-          style={[styles.btnLabel, { color: fg, fontSize: fs }]}
-          numberOfLines={1}
-        >
-          {label}
-        </Text>
-      </Pressable>
-    </Animated.View>
+    <PressablePlate
+      onPress={onPress}
+      accessibilityLabel={label}
+      offset={plate.base}
+      radius={radius.md}
+      borderWidth={border.base}
+      fill={bg}
+      style={{ width: size - plate.base }}
+      contentStyle={[styles.btn, { height: size - plate.base }]}
+    >
+      <Text style={[styles.btnLabel, { color: fg }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </PressablePlate>
   );
 }
 
@@ -440,52 +374,74 @@ function CalcButton({
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
+  headerBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    borderWidth: border.base,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // History
+  historyBar: { borderBottomWidth: StyleSheet.hairlineWidth },
+  historyScroll: { gap: spacing.sm, padding: spacing.md },
+  historyChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+    borderWidth: border.base,
+    alignItems: 'flex-end',
+    minWidth: 84,
+    maxWidth: 160,
+  },
+  historyExpr: { fontSize: 10 },
+  historyRes: { fontSize: 15, fontWeight: '700', letterSpacing: -0.3 },
+
   // Display
   display: {
     flex: 1,
     paddingHorizontal: H_PAD,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
     justifyContent: 'flex-end',
   },
-  historyToggle: { alignSelf: 'flex-end', marginBottom: 2 },
-  historyToggleText: { fontSize: 12 },
-  historyView: { maxHeight: 68, marginBottom: 6 },
-  historyScroll: { gap: 8, paddingVertical: 2 },
-  historyChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'flex-end',
-    minWidth: 72,
+  /** The recessed readout the numbers sit in. */
+  readout: {
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: 2,
   },
-  historyExpr: { fontSize: 10 },
-  historyRes:  { fontSize: 14, fontWeight: '600', letterSpacing: -0.3 },
-  expression: {
-    fontSize: 16,
+  secondary: {
+    fontSize: 15,
     textAlign: 'right',
-    letterSpacing: -0.2,
-    marginBottom: 2,
+    minHeight: 20,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
-  result: {
-    fontSize: 64,
-    fontWeight: '200',
+  primary: {
+    fontSize: 58,
+    fontWeight: '800',
     textAlign: 'right',
-    letterSpacing: -3,
-    lineHeight: 70,
+    letterSpacing: -2,
+    lineHeight: 66,
+    fontVariant: ['tabular-nums'],
   },
-
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: H_PAD,
-    marginBottom: spacing.sm,
+  copyHint: {
+    fontSize: 8.5,
+    textAlign: 'right',
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginTop: 4,
   },
 
   // Keypad
   keypad: {
     paddingHorizontal: H_PAD,
     paddingBottom: spacing.md,
+    paddingTop: spacing.sm,
     gap: GAP,
   },
   row: {
@@ -494,25 +450,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // Bottom combined block (rows 3+4 + tall =)
-  botBlock: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  botLeft: {
-    gap: GAP,
-    // 3 buttons + 2 gaps
-    width: BTN * 3 + GAP * 2,
-  },
-
-  // Button
-  btn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  btn: { alignItems: 'center', justifyContent: 'center' },
   btnLabel: {
-    fontWeight: '400',
+    fontSize: 24,
+    fontWeight: '800',
     includeFontPadding: false,
     textAlign: 'center',
   },

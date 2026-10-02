@@ -1,135 +1,218 @@
-import React, { useEffect, useRef } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  Pressable,
-  FlatList,
-  Dimensions,
-  Platform,
-} from 'react-native';
-import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
-import Svg, { Circle, Line, G } from 'react-native-svg';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, View, Text, Pressable, FlatList, Dimensions } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Svg, { Circle, Line } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
 
-import { UtilityHeader } from '@/components/common/UtilityHeader';
+import { UtilityHeader, HeaderKey } from '@/components/common/UtilityHeader';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useUtilityState } from '@/hooks/useUtilityState';
-import { spacing, radius, typography } from '@/theme';
-import type { StopwatchState } from '@/types';
+import { useHaptic, toast, onColour, PressablePlate } from '@/components/ui';
+import { spacing, radius, typography, border, plate } from '@/theme';
 
-// ─── Constants ─────────────────────────────────────────────────────────────
-const ACCENT      = '#14B8A6';
-const START_COLOR = '#8B5CF6';   // purple — matches START label in reference
-const RESET_COLOR = '#F43F5E';   // red    — matches RESET label in reference
-const DOT_COLOR   = '#F43F5E';   // progress dot colour
+const ACCENT = '#2E6A66';
+const START_COLOR = '#4C6B3C';
+const RESET_COLOR = '#A6392B';
+const BEST_COLOR = '#4C6B3C';
 
-// ─── Layout — computed once ────────────────────────────────────────────────
+// ─── Layout ────────────────────────────────────────────────────────────────
 const { width: SW } = Dimensions.get('window');
-const H_PAD   = 24;
-// Ring fits comfortably: 80% of screen width, max 300px
-const RING_SZ = Math.min(SW * 0.80, 300);
-const CX      = RING_SZ / 2;
-const CY      = RING_SZ / 2;
-const RING_R  = RING_SZ / 2 - 2;       // outer edge of tick band (2px SVG margin)
-const BAND_W  = RING_SZ * 0.095;       // width of the tick band (9.5% of diameter)
-const TICK_R  = RING_R;                // ticks start at outer edge
-const FACE_R  = RING_R - BAND_W;       // inner face radius
+const H_PAD = 24;
+const RING_SZ = Math.min(SW * 0.78, 290);
+const CX = RING_SZ / 2;
+const CY = RING_SZ / 2;
+const RING_R = RING_SZ / 2 - 2;
+const BAND_W = RING_SZ * 0.095;
+const FACE_R = RING_R - BAND_W;
+const TICK_COUNT = 120;
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
+interface Lap { id: number; time: number; delta: number }
+
+interface StopwatchPersisted {
+  /** Epoch ms when the current run started, or null when stopped. */
+  startedAt: number | null;
+  /** Milliseconds banked before the current run began. */
+  banked: number;
+  laps: Lap[];
+}
+
+const DEFAULT_STATE: StopwatchPersisted = {
+  startedAt: null,
+  banked: 0,
+  laps: [],
+};
+
 function pt(cx: number, cy: number, r: number, deg: number) {
   const rad = ((deg - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
-function fmt(ms: number) {
-  const t  = Math.max(0, Math.floor(ms));
-  const hh = Math.floor(t / 3600000).toString().padStart(2, '0');
-  const mm = Math.floor((t % 3600000) / 60000).toString().padStart(2, '0');
-  const ss = Math.floor((t % 60000) / 1000).toString().padStart(2, '0');
-  const cs = Math.floor((t % 1000) / 10).toString().padStart(2, '0');
-  return { hh, mm, ss, cs };
+function split(ms: number) {
+  const t = Math.max(0, Math.floor(ms));
+  return {
+    hh: Math.floor(t / 3600000),
+    mm: Math.floor((t % 3600000) / 60000),
+    ss: Math.floor((t % 60000) / 1000),
+    cs: Math.floor((t % 1000) / 10),
+  };
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+function fmtClock(ms: number) {
+  const { hh, mm, ss, cs } = split(ms);
+  return hh > 0 ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}.${pad(cs)}`;
 }
 
 function fmtLap(ms: number) {
-  const { hh, mm, ss, cs } = fmt(ms);
-  if (parseInt(hh) > 0) return `${hh}:${mm}:${ss}`;
-  return `${mm}:${ss}:${cs}`;
+  const { hh, mm, ss, cs } = split(ms);
+  return hh > 0 ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}.${pad(cs)}`;
 }
 
-// ─── Tick marks — built inside component so theme color is available ──────
-const TICK_COUNT = 120;
+/**
+ * Static tick ring. It only depends on the theme, so it is memoised — the old
+ * build rebuilt all 120 <Line> elements on every 30 ms timer tick.
+ */
+const TickRing = React.memo(function TickRing({
+  tickColor, faceColor, bezelColor, borderColor,
+}: {
+  tickColor: string; faceColor: string; bezelColor: string; borderColor: string;
+}) {
+  const ticks = useMemo(
+    () =>
+      Array.from({ length: TICK_COUNT }).map((_, i) => {
+        const deg = (i / TICK_COUNT) * 360;
+        const major = i % 5 === 0;
+        const len = major ? BAND_W * 0.55 : BAND_W * 0.28;
+        const o = pt(CX, CY, RING_R - 1, deg);
+        const inn = pt(CX, CY, RING_R - 1 - len, deg);
+        return { key: i, o, inn, major };
+      }),
+    [],
+  );
 
-// ─── Default state ─────────────────────────────────────────────────────────
-const DEFAULT_STATE: StopwatchState = {
-  isRunning: false,
-  elapsedMs: 0,
-  laps: [],
-};
+  return (
+    <>
+      <Circle cx={CX} cy={CY} r={RING_R} fill={bezelColor} stroke={borderColor} strokeWidth={1.5} />
+      {ticks.map((t) => (
+        <Line
+          key={t.key}
+          x1={t.o.x} y1={t.o.y} x2={t.inn.x} y2={t.inn.y}
+          stroke={tickColor}
+          strokeWidth={t.major ? 1.6 : 0.8}
+          opacity={t.major ? 0.7 : 0.3}
+        />
+      ))}
+      <Circle cx={CX} cy={CY} r={FACE_R} fill={faceColor} stroke={borderColor} strokeWidth={1} />
+    </>
+  );
+});
 
-// ─── Screen ────────────────────────────────────────────────────────────────
 export default function StopwatchScreen() {
   const { colors } = useTheme();
-  const { state, setState, clearState } = useUtilityState<StopwatchState>(
-    'stopwatch',
-    DEFAULT_STATE,
+  const { state, setState, clearState } = useUtilityState<StopwatchPersisted>('stopwatch', DEFAULT_STATE);
+  const haptic = useHaptic();
+
+  /**
+   * The ticking value lives in local state, not in the persisted store.
+   * Previously every 30 ms frame flowed through the debounced AsyncStorage
+   * writer, so a running stopwatch hammered the disk. Only start/stop/lap —
+   * events, not frames — touch storage now, and elapsed time is always derived
+   * from wall-clock timestamps so it survives backgrounding.
+   */
+  const [elapsed, setElapsed] = useState(0);
+  const frame = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const running = state.startedAt !== null;
+
+  const computeElapsed = useCallback(
+    (s: StopwatchPersisted) => (s.startedAt === null ? s.banked : s.banked + (Date.now() - s.startedAt)),
+    [],
   );
-  const startRef    = useRef<number>(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Timer ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (state.isRunning) {
-      startRef.current = Date.now() - state.elapsedMs;
-      intervalRef.current = setInterval(() => {
-        setState((p) => ({ ...p, elapsedMs: Date.now() - startRef.current }));
-      }, 30);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+    setElapsed(computeElapsed(state));
+    if (state.startedAt === null) {
+      if (frame.current) clearInterval(frame.current);
+      frame.current = null;
+      return;
     }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [state.isRunning]);
+    frame.current = setInterval(() => setElapsed(computeElapsed(state)), 33);
+    return () => {
+      if (frame.current) clearInterval(frame.current);
+      frame.current = null;
+    };
+  }, [state.startedAt, state.banked, computeElapsed]);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
-  const handleStartStop = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setState((p) => ({ ...p, isRunning: !p.isRunning }));
-  };
+  const handleStartStop = useCallback(() => {
+    haptic('medium');
+    setState((p) =>
+      p.startedAt === null
+        ? { ...p, startedAt: Date.now() }
+        : { ...p, banked: p.banked + (Date.now() - p.startedAt), startedAt: null },
+    );
+  }, [setState, haptic]);
 
-  const handleLap = () => {
-    if (!state.isRunning) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const handleLap = useCallback(() => {
+    haptic('light');
     setState((p) => {
+      if (p.startedAt === null) return p;
+      const total = p.banked + (Date.now() - p.startedAt);
       const last = p.laps.length > 0 ? p.laps[p.laps.length - 1].time : 0;
-      return {
-        ...p,
-        laps: [...p.laps, { id: p.laps.length + 1, time: p.elapsedMs, delta: p.elapsedMs - last }],
-      };
+      return { ...p, laps: [...p.laps, { id: p.laps.length + 1, time: total, delta: total - last }] };
     });
-  };
+  }, [setState, haptic]);
 
-  const handleReset = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setState({ isRunning: false, elapsedMs: 0, laps: [] });
-  };
+  const handleReset = useCallback(() => {
+    haptic('medium');
+    setElapsed(0);
+    setState(DEFAULT_STATE);
+  }, [setState, haptic]);
 
-  const deleteLap = (id: number) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setState((p) => ({
-      ...p,
-      laps: p.laps.filter(l => l.id !== id).map((l, i) => ({ ...l, id: i + 1 })),
-    }));
-  };
+  const deleteLap = useCallback(
+    (id: number) => {
+      haptic('light');
+      setState((p) => {
+        const kept = p.laps.filter((l) => l.id !== id);
+        // Re-derive deltas so the remaining laps stay internally consistent
+        let prev = 0;
+        return {
+          ...p,
+          laps: kept.map((l, i) => {
+            const lap = { ...l, id: i + 1, delta: l.time - prev };
+            prev = l.time;
+            return lap;
+          }),
+        };
+      });
+    },
+    [setState, haptic],
+  );
 
-  // ── Time display ──────────────────────────────────────────────────────────
-  const { hh, mm, ss, cs } = fmt(state.elapsedMs);
-  const showHours = parseInt(hh) > 0;
+  const copyLaps = useCallback(async () => {
+    if (state.laps.length === 0) return;
+    const text = state.laps
+      .map((l) => `Lap ${l.id}\t${fmtLap(l.delta)}\t(total ${fmtLap(l.time)})`)
+      .join('\n');
+    await Clipboard.setStringAsync(text);
+    haptic('success');
+    toast('Laps copied');
+  }, [state.laps, haptic]);
 
-  // ── Progress dot position (rotates around ring, 1 rev per 60s) ───────────
-  const dotDeg = (state.elapsedMs / 1000 % 60) / 60 * 360;
-  const dotPos = pt(CX, CY, RING_R - BAND_W / 2, dotDeg);  // midpoint of tick band
+  // Best/worst computed once per lap list, not once per rendered row
+  const { best, worst } = useMemo(() => {
+    if (state.laps.length < 2) return { best: -1, worst: -1 };
+    const deltas = state.laps.map((l) => l.delta);
+    return { best: Math.min(...deltas), worst: Math.max(...deltas) };
+  }, [state.laps]);
+
+  const showHours = elapsed >= 3600000;
+  const dotDeg = ((elapsed / 1000) % 60 / 60) * 360;
+  const dotPos = pt(CX, CY, RING_R - BAND_W / 2, dotDeg);
+
+  const reversedLaps = useMemo(() => [...state.laps].reverse(), [state.laps]);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.bg }]} edges={['bottom']}>
@@ -137,111 +220,91 @@ export default function StopwatchScreen() {
         title="Stopwatch"
         utilityId="stopwatch"
         accentColor={ACCENT}
+        subtitle={state.laps.length > 0 ? `${state.laps.length} lap${state.laps.length === 1 ? '' : 's'}` : undefined}
         onClearData={clearState}
+        rightAction={
+          state.laps.length > 0 ? (
+            <HeaderKey
+              icon="copy-outline"
+              label="Copy laps"
+              fg={onColour(ACCENT)}
+              onPress={copyLaps}
+            />
+          ) : undefined
+        }
       />
 
-      {/* ── Ring + digital display ──────────────────────────────────────────── */}
+      {/* Ring */}
       <Animated.View entering={FadeInDown.delay(40).duration(300)} style={styles.ringWrap}>
         <Svg width={RING_SZ} height={RING_SZ}>
-
-          {/* ── Outer bezel ring (theme-aware border) ── */}
-          <Circle cx={CX} cy={CY} r={RING_R}
-            fill={colors.card}
-            stroke={colors.border}
-            strokeWidth={1.5}
+          <TickRing
+            tickColor={colors.textSecondary}
+            faceColor={colors.surface}
+            bezelColor={colors.card}
+            borderColor={colors.border}
           />
-
-          {/* ── Tick marks — built here so they use theme color ── */}
-          {Array.from({ length: TICK_COUNT }).map((_, i) => {
-            const deg   = (i / TICK_COUNT) * 360;
-            const major = i % 5 === 0;
-            const len   = major ? BAND_W * 0.55 : BAND_W * 0.28;
-            const o     = pt(CX, CY, TICK_R - 1, deg);
-            const inn   = pt(CX, CY, TICK_R - 1 - len, deg);
-            return (
-              <Line key={i}
-                x1={o.x} y1={o.y} x2={inn.x} y2={inn.y}
-                stroke={colors.textSecondary}
-                strokeWidth={major ? 1.6 : 0.8}
-                opacity={major ? 0.7 : 0.3}
-              />
-            );
-          })}
-
-          {/* ── Inner face circle ── */}
-          <Circle cx={CX} cy={CY} r={FACE_R}
-            fill={colors.surface}
-            stroke={colors.border}
-            strokeWidth={1}
-          />
-
-          {/* ── Progress dot — sits on midpoint of tick band ── */}
-          {state.elapsedMs > 0 && (
+          {elapsed > 0 && (
             <>
-              <Circle
-                cx={dotPos.x} cy={dotPos.y} r={BAND_W * 0.38}
-                fill={DOT_COLOR}
-              />
+              <Circle cx={dotPos.x} cy={dotPos.y} r={BAND_W * 0.38} fill={RESET_COLOR} />
               <Circle
                 cx={dotPos.x} cy={dotPos.y} r={BAND_W * 0.55}
-                fill="none"
-                stroke={DOT_COLOR}
-                strokeWidth={1}
-                opacity={0.35}
+                fill="none" stroke={RESET_COLOR} strokeWidth={1} opacity={0.35}
               />
             </>
           )}
-
         </Svg>
 
-        {/* Digital time — absolutely centred over SVG */}
         <View style={styles.timeOverlay} pointerEvents="none">
-          <Text style={[styles.timeDigits, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>
-            {showHours ? `${hh}:${mm}:${ss}` : `${mm}:${ss}:${cs}`}
+          <Text
+            style={[styles.timeDigits, { color: colors.text }, showHours && styles.timeDigitsSmall]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {fmtClock(elapsed)}
           </Text>
-          {state.laps.length > 0 && (
-            <Text style={[styles.lapIndicator, { color: colors.textTertiary }]}>
-              LAP {state.laps.length + (state.isRunning ? 1 : 0)}
-            </Text>
+          {running && (
+            <View style={[styles.runningPill, { backgroundColor: ACCENT + '20' }]}>
+              <View style={[styles.runningDot, { backgroundColor: ACCENT }]} />
+              <Text style={[styles.runningTxt, { color: ACCENT }]}>RUNNING</Text>
+            </View>
           )}
         </View>
       </Animated.View>
 
-      {/* ── Lap cards ───────────────────────────────────────────────────────── */}
-      {state.laps.length > 0 && (
+      {/* Laps */}
+      {state.laps.length > 0 ? (
         <Animated.View entering={FadeIn.duration(220)} style={styles.lapsSection}>
           <FlatList
-            data={[...state.laps].reverse()}
-            keyExtractor={(l) => l.id.toString()}
+            data={reversedLaps}
+            keyExtractor={(l) => String(l.id)}
             numColumns={2}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.lapsGrid}
             columnWrapperStyle={styles.lapsRow}
             renderItem={({ item }) => {
-              const minLap = Math.min(...state.laps.map(l => l.delta));
-              const maxLap = Math.max(...state.laps.map(l => l.delta));
-              const best   = state.laps.length > 1 && item.delta === minLap;
-              const worst  = state.laps.length > 1 && item.delta === maxLap;
-              const timeClr = best ? '#10B981' : worst ? RESET_COLOR : colors.text;
+              const isBest = state.laps.length > 1 && item.delta === best;
+              const isWorst = state.laps.length > 1 && item.delta === worst && best !== worst;
+              const timeClr = isBest ? BEST_COLOR : isWorst ? RESET_COLOR : colors.text;
               return (
                 <View style={[styles.lapCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <View style={styles.lapCardHeader}>
-                    <Text style={[styles.lapCardLabel, { color: colors.textSecondary }]}>
-                      LAP {item.id}
-                    </Text>
+                    <Text style={[styles.lapCardLabel, { color: colors.textSecondary }]}>LAP {item.id}</Text>
                     <Pressable
                       onPress={() => deleteLap(item.id)}
                       hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete lap ${item.id}`}
                     >
-                      <Ionicons name="trash-outline" size={14} color={colors.textTertiary} />
+                      <Ionicons name="close" size={14} color={colors.textTertiary} />
                     </Pressable>
                   </View>
-                  <Text style={[styles.lapCardTime, { color: timeClr }]}>
-                    {fmtLap(item.delta)}
+                  <Text style={[styles.lapCardTime, { color: timeClr }]}>{fmtLap(item.delta)}</Text>
+                  <Text style={[styles.lapCardTotal, { color: colors.textTertiary }]}>
+                    {fmtLap(item.time)}
                   </Text>
-                  {(best || worst) && (
-                    <Text style={[styles.lapCardBadge, { color: best ? '#10B981' : RESET_COLOR }]}>
-                      {best ? '▲ Best' : '▼ Worst'}
+                  {(isBest || isWorst) && (
+                    <Text style={[styles.lapCardBadge, { color: isBest ? BEST_COLOR : RESET_COLOR }]}>
+                      {isBest ? '▲ Fastest' : '▼ Slowest'}
                     </Text>
                   )}
                 </View>
@@ -249,55 +312,75 @@ export default function StopwatchScreen() {
             }}
           />
         </Animated.View>
+      ) : (
+        <View style={styles.lapsSection}>
+          <Text style={[styles.lapHint, { color: colors.textTertiary }]}>
+            {running ? 'Tap LAP to record a split' : 'Tap START to begin'}
+          </Text>
+        </View>
       )}
 
-      {/* ── Bottom controls ─────────────────────────────────────────────────── */}
-      <Animated.View
-        entering={FadeInDown.delay(80).duration(280)}
-        style={styles.controls}
-      >
-        {/* START / PAUSE */}
-        <Pressable
+      {/* Controls */}
+      <Animated.View entering={FadeInDown.delay(80).duration(280)} style={styles.controls}>
+        <PressablePlate
           onPress={handleStartStop}
-          style={[styles.ctrlBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          accessibilityLabel={running ? 'Pause' : 'Start'}
+          offset={plate.base}
+          radius={radius.md}
+          fill={running ? colors.card : START_COLOR}
+          style={styles.ctrlOuter}
+          contentStyle={styles.ctrlBtn}
         >
-          <Text style={[styles.ctrlBtnTxt, { color: START_COLOR }]}>
-            {state.isRunning ? 'PAUSE' : 'START'}
-          </Text>
-        </Pressable>
-
-        {/* LAP (only while running) or RESET (when stopped) */}
-        {state.isRunning ? (
-          <Pressable
-            onPress={handleLap}
-            style={[styles.ctrlBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <Text style={[styles.ctrlBtnTxt, { color: colors.textSecondary }]}>LAP</Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            onPress={handleReset}
-            disabled={state.elapsedMs === 0}
+          <Text
             style={[
-              styles.ctrlBtn,
-              { backgroundColor: colors.card, borderColor: colors.border },
-              state.elapsedMs === 0 && { opacity: 0.3 },
+              styles.ctrlBtnTxt,
+              { color: running ? START_COLOR : onColour(START_COLOR) },
             ]}
           >
+            {running ? 'PAUSE' : elapsed > 0 ? 'RESUME' : 'START'}
+          </Text>
+        </PressablePlate>
+
+        {running ? (
+          <PressablePlate
+            onPress={handleLap}
+            accessibilityLabel="Record a lap"
+            offset={plate.base}
+            radius={radius.md}
+            fill={colors.card}
+            style={styles.ctrlOuter}
+            contentStyle={styles.ctrlBtn}
+          >
+            <Text style={[styles.ctrlBtnTxt, { color: colors.text }]}>LAP</Text>
+          </PressablePlate>
+        ) : (
+          <PressablePlate
+            onPress={handleReset}
+            disabled={elapsed === 0 && state.laps.length === 0}
+            accessibilityLabel="Reset"
+            offset={plate.base}
+            radius={radius.md}
+            fill={colors.card}
+            style={styles.ctrlOuter}
+            contentStyle={styles.ctrlBtn}
+          >
             <Text style={[styles.ctrlBtnTxt, { color: RESET_COLOR }]}>RESET</Text>
-          </Pressable>
+          </PressablePlate>
         )}
       </Animated.View>
-
     </SafeAreaView>
   );
 }
 
-// ─── Styles ────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  disabled: { opacity: 0.3 },
+  headerBtn: {
+    width: 36, height: 36, borderRadius: 12,
+    borderWidth: border.base,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
-  // Ring
   ringWrap: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -308,40 +391,38 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
-    width: FACE_R * 2 * 0.8,
+    width: FACE_R * 2 * 0.82,
+    gap: 8,
   },
   timeDigits: {
-    fontSize: 42,
-    fontWeight: '200',
-    letterSpacing: 3,
+    fontSize: 44,
+    fontWeight: '800',
+    letterSpacing: 0.5,
     fontVariant: ['tabular-nums'],
     textAlign: 'center',
   },
-  lapIndicator: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 2,
-    marginTop: 6,
+  timeDigitsSmall: { fontSize: 38, letterSpacing: 1 },
+  runningPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
   },
+  runningDot: { width: 5, height: 5, borderRadius: 3 },
+  runningTxt: { fontSize: 9, fontWeight: '800', letterSpacing: 1.2 },
 
-  // Laps grid
-  lapsSection: {
-    flex: 1,
-    paddingHorizontal: H_PAD,
-  },
-  lapsGrid: {
-    gap: 10,
-    paddingBottom: spacing.md,
-  },
-  lapsRow: {
-    gap: 10,
-  },
+  lapsSection: { flex: 1, paddingHorizontal: H_PAD },
+  lapHint: { textAlign: 'center', fontSize: typography.sizes.sm, paddingTop: spacing.lg },
+  lapsGrid: { gap: 10, paddingBottom: spacing.md },
+  lapsRow: { gap: 10 },
   lapCard: {
     flex: 1,
     borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: border.base,
     padding: spacing.md,
-    gap: 4,
+    gap: 2,
   },
   lapCardHeader: {
     flexDirection: 'row',
@@ -349,24 +430,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 2,
   },
-  lapCardLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  lapCardTime: {
-    fontSize: 18,
-    fontWeight: '600',
-    letterSpacing: 1,
-    fontVariant: ['tabular-nums'],
-  },
-  lapCardBadge: {
-    fontSize: 10,
-    fontWeight: '600',
-    marginTop: 2,
-  },
+  lapCardLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  lapCardTime: { fontSize: 18, fontWeight: '700', letterSpacing: 0.5, fontVariant: ['tabular-nums'] },
+  lapCardTotal: { fontSize: 11, fontVariant: ['tabular-nums'] },
+  lapCardBadge: { fontSize: 10, fontWeight: '700', marginTop: 2 },
 
-  // Controls
   controls: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -374,17 +442,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
   },
+  ctrlOuter: { flex: 1 },
   ctrlBtn: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: spacing.md + 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ctrlBtnTxt: {
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 2,
-  },
+  ctrlBtnTxt: { fontSize: 15, fontWeight: '800', letterSpacing: 2 },
 });

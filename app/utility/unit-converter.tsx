@@ -12,14 +12,19 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 
 import { UtilityHeader } from '@/components/common/UtilityHeader';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useUtilityState } from '@/hooks/useUtilityState';
-import { spacing, radius, typography } from '@/theme';
+import { Card, useHaptic, toast } from '@/components/ui';
+import { formatNumber } from '@/utils/format';
+import { spacing, radius, typography, border } from '@/theme';
 import type { UnitConverterState } from '@/types';
 
 // ─── Unit Definitions ─────────────────────────────────────────────────────
+const ACCENT = '#2E6A66';
+
 const UNIT_CATEGORIES: Record<
   string,
   { label: string; units: Record<string, { label: string; toBase: number }> }
@@ -46,6 +51,7 @@ const UNIT_CATEGORIES: Record<
       lb: { label: 'Pound', toBase: 0.453592 },
       oz: { label: 'Ounce', toBase: 0.0283495 },
       t: { label: 'Tonne', toBase: 1000 },
+      st: { label: 'Stone', toBase: 6.35029 },
     },
   },
   temperature: {
@@ -76,6 +82,8 @@ const UNIT_CATEGORIES: Record<
       gal: { label: 'Gallon (US)', toBase: 3.78541 },
       qt: { label: 'Quart', toBase: 0.946353 },
       cup: { label: 'Cup', toBase: 0.236588 },
+      pt: { label: 'Pint (US)', toBase: 0.473176 },
+      floz: { label: 'Fluid ounce (US)', toBase: 0.0295735 },
     },
   },
   speed: {
@@ -90,11 +98,18 @@ const UNIT_CATEGORIES: Record<
   data: {
     label: 'Data',
     units: {
-      b: { label: 'Byte', toBase: 1 },
-      kb: { label: 'Kilobyte', toBase: 1024 },
-      mb: { label: 'Megabyte', toBase: 1048576 },
-      gb: { label: 'Gigabyte', toBase: 1073741824 },
-      tb: { label: 'Terabyte', toBase: 1099511627776 },
+      b:   { label: 'Byte', toBase: 1 },
+      // Decimal (SI) units — what storage vendors quote
+      kb:  { label: 'Kilobyte (kB)', toBase: 1e3 },
+      mb:  { label: 'Megabyte (MB)', toBase: 1e6 },
+      gb:  { label: 'Gigabyte (GB)', toBase: 1e9 },
+      tb:  { label: 'Terabyte (TB)', toBase: 1e12 },
+      // Binary units — what operating systems report. These were previously
+      // labelled "Kilobyte" while using 1024, which is a kibibyte.
+      kib: { label: 'Kibibyte (KiB)', toBase: 1024 },
+      mib: { label: 'Mebibyte (MiB)', toBase: 1048576 },
+      gib: { label: 'Gibibyte (GiB)', toBase: 1073741824 },
+      tib: { label: 'Tebibyte (TiB)', toBase: 1099511627776 },
     },
   },
 };
@@ -113,22 +128,37 @@ function convertTemperature(value: number, from: string, to: string): number {
   }
 }
 
-function convert(value: string, category: string, from: string, to: string): string {
+/** Numeric conversion. Returns NaN when the input isn't a number. */
+function convertValue(value: string, category: string, from: string, to: string): number {
   const num = parseFloat(value);
-  if (isNaN(num)) return '';
-  if (from === to) return value;
+  if (isNaN(num)) return NaN;
+  if (from === to) return num;
 
-  if (category === 'temperature') {
-    const res = convertTemperature(num, from, to);
-    return parseFloat(res.toFixed(6)).toString();
-  }
+  if (category === 'temperature') return convertTemperature(num, from, to);
 
   const units = UNIT_CATEGORIES[category]?.units;
-  if (!units) return '';
+  if (!units) return NaN;
   const fromFactor = units[from]?.toBase ?? 1;
   const toFactor = units[to]?.toBase ?? 1;
-  const result = (num * fromFactor) / toFactor;
-  return parseFloat(result.toFixed(8)).toString();
+  return (num * fromFactor) / toFactor;
+}
+
+/**
+ * Display a converted value without either losing tiny results to rounding
+ * (1 mm in miles) or dumping float noise on screen.
+ */
+function present(n: number): string {
+  if (!isFinite(n)) return '';
+  if (n === 0) return '0';
+  const abs = Math.abs(n);
+  if (abs >= 1e12 || abs < 1e-6) return n.toExponential(4).replace(/\.?0+e/, 'e');
+  const decimals = abs >= 1000 ? 2 : abs >= 1 ? 4 : 8;
+  return formatNumber(n, { decimals, trim: true, grouping: abs >= 10000 ? 'western' : 'none' });
+}
+
+function convert(value: string, category: string, from: string, to: string): string {
+  const n = convertValue(value, category, from, to);
+  return isNaN(n) ? '' : present(n);
 }
 
 const DEFAULT_STATE: UnitConverterState = {
@@ -145,8 +175,17 @@ export default function UnitConverterScreen() {
     'unitConverter',
     DEFAULT_STATE
   );
+  const haptic = useHaptic();
 
   const currentUnits = UNIT_CATEGORIES[state.category]?.units ?? {};
+
+  /**
+   * The converted value is DERIVED, never read back from storage. `toValue` is
+   * only written when an input changes, so a restored session would otherwise
+   * show a stale (or empty) result in the headline box while the table below
+   * showed the correct figures.
+   */
+  const derivedTo = convert(state.fromValue, state.category, state.fromUnit, state.toUnit);
 
   const handleFromChange = (val: string) => {
     const toVal = convert(val, state.category, state.fromUnit, state.toUnit);
@@ -154,16 +193,23 @@ export default function UnitConverterScreen() {
   };
 
   const handleSwap = () => {
-    setState((p) => ({
-      ...p,
-      fromUnit: p.toUnit,
-      toUnit: p.fromUnit,
-      fromValue: p.toValue,
-      toValue: p.fromValue,
-    }));
+    haptic('medium');
+    setState((p) => {
+      // Recompute from the swapped input rather than reusing the old display
+      // string, so repeated swaps can't drift through rounding.
+      const nextFromValue = convert(p.fromValue, p.category, p.fromUnit, p.toUnit);
+      return {
+        ...p,
+        fromUnit: p.toUnit,
+        toUnit: p.fromUnit,
+        fromValue: nextFromValue,
+        toValue: convert(nextFromValue, p.category, p.toUnit, p.fromUnit),
+      };
+    });
   };
 
   const handleCategorySelect = (cat: string) => {
+    haptic('select');
     const units = Object.keys(UNIT_CATEGORIES[cat]?.units ?? {});
     setState({
       category: cat,
@@ -182,7 +228,7 @@ export default function UnitConverterScreen() {
       <UtilityHeader
         title="Unit Converter"
         utilityId="unitConverter"
-        accentColor="#06B6D4"
+        accentColor={ACCENT}
         onClearData={clearState}
       />
 
@@ -204,9 +250,9 @@ export default function UnitConverterScreen() {
                 styles.pill,
                 {
                   backgroundColor:
-                    state.category === key ? '#06B6D4' : colors.card,
+                    state.category === key ? ACCENT : colors.card,
                   borderColor:
-                    state.category === key ? '#06B6D4' : colors.border,
+                    state.category === key ? ACCENT : colors.border,
                 },
               ]}
             >
@@ -242,7 +288,7 @@ export default function UnitConverterScreen() {
                 });
               }}
               colors={colors}
-              accent="#06B6D4"
+              accent={ACCENT}
             />
             <TextInput
               style={[styles.valueInput, { color: colors.text, borderColor: colors.border }]}
@@ -257,9 +303,9 @@ export default function UnitConverterScreen() {
           {/* Swap */}
           <Pressable
             onPress={handleSwap}
-            style={[styles.swapBtn, { backgroundColor: '#06B6D420', borderColor: '#06B6D440' }]}
+            style={[styles.swapBtn, { backgroundColor: ACCENT + '1F', borderColor: ACCENT + '45' }]}
           >
-            <Ionicons name="swap-vertical" size={18} color="#06B6D4" />
+            <Ionicons name="swap-vertical" size={18} color={ACCENT} />
           </Pressable>
 
           {/* To */}
@@ -274,38 +320,80 @@ export default function UnitConverterScreen() {
                 });
               }}
               colors={colors}
-              accent="#06B6D4"
+              accent={ACCENT}
             />
-            <View style={[styles.resultBox, { borderColor: colors.border }]}>
-              <Text style={[styles.resultText, { color: colors.text }]} numberOfLines={1}>
-                {state.toValue || '0'}
+            <Pressable
+              onLongPress={async () => {
+                if (!derivedTo) return;
+                await Clipboard.setStringAsync(derivedTo);
+                haptic('success');
+                toast('Copied to clipboard');
+              }}
+              delayLongPress={300}
+              accessibilityRole="button"
+              accessibilityLabel={`Result ${derivedTo || 0}. Long press to copy.`}
+              style={[styles.resultBox, { borderColor: colors.border, backgroundColor: colors.card }]}
+            >
+              <Text
+                style={[styles.resultText, { color: colors.text }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.5}
+              >
+                {derivedTo || '0'}
               </Text>
-            </View>
+            </Pressable>
           </View>
         </Animated.View>
 
         {/* Quick reference */}
         <Animated.View entering={FadeInDown.delay(160).duration(300)}>
           <Text style={[styles.refTitle, { color: colors.textSecondary }]}>
-            All Units
+            All units
           </Text>
-          {Object.entries(currentUnits).map(([key, unit]) => {
-            const converted = convert('1', state.category, state.fromUnit, key);
-            return (
-              <View
-                key={key}
-                style={[styles.refRow, { borderBottomColor: colors.border }]}
-              >
-                <Text style={[styles.refLabel, { color: colors.text }]}>
-                  {unit.label}
-                </Text>
-                <Text style={[styles.refValue, { color: colors.textSecondary }]}>
-                  1 {UNIT_CATEGORIES[state.category]?.units[state.fromUnit]?.label} ={' '}
-                  {converted} {unit.label}
-                </Text>
-              </View>
-            );
-          })}
+          <Card padded={false}>
+            {Object.entries(currentUnits).map(([key, unit], i) => {
+              // Show the *entered* amount in every unit, not a fixed 1
+              const source = state.fromValue || '1';
+              const converted = convert(source, state.category, state.fromUnit, key);
+              const isSource = key === state.fromUnit;
+              return (
+                <Pressable
+                  key={key}
+                  onPress={() => {
+                    haptic('select');
+                    setState((p) => ({
+                      ...p,
+                      toUnit: key,
+                      toValue: convert(p.fromValue, p.category, p.fromUnit, key),
+                    }));
+                  }}
+                  style={({ pressed }) => [
+                    styles.refRow,
+                    i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+                    isSource && { backgroundColor: ACCENT + '10' },
+                    pressed && { backgroundColor: colors.muted },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.refLabel,
+                      { color: isSource ? ACCENT : colors.text, fontWeight: isSource ? '700' : '500' },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {unit.label}
+                  </Text>
+                  <Text
+                    style={[styles.refValue, { color: colors.textSecondary }]}
+                    numberOfLines={1}
+                  >
+                    {converted}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </Card>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
@@ -421,13 +509,13 @@ const styles = StyleSheet.create({
   pill: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-    borderWidth: 1,
+    borderRadius: radius.sm,
+    borderWidth: border.base,
   },
   pillText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
   card: {
     borderRadius: radius.xl,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: spacing.lg,
     gap: spacing.md,
     alignItems: 'center',
@@ -446,7 +534,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: border.base,
   },
   pickerLabel: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, flex: 1 },
   modalBackdrop: {
@@ -459,14 +547,9 @@ const styles = StyleSheet.create({
   dropdown: {
     position: 'absolute',
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: border.base,
     // Android: elevation renders the shadow AND controls draw order (zIndex equivalent)
-    elevation: 8,
     // iOS: shadow stack
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
   },
   dropdownItem: {
     paddingHorizontal: spacing.md,
@@ -481,7 +564,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: border.base,
     letterSpacing: -0.5,
   },
   resultBox: {
@@ -489,7 +572,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: border.base,
     justifyContent: 'center',
     alignItems: 'flex-end',
   },
@@ -504,7 +587,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: border.base,
   },
   refTitle: {
     fontSize: typography.sizes.sm,
@@ -514,9 +597,18 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   refRow: {
-    paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.base,
   },
-  refLabel: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
-  refValue: { fontSize: typography.sizes.sm, marginTop: 2 },
+  refLabel: { fontSize: typography.sizes.base, flexShrink: 1 },
+  refValue: {
+    fontSize: typography.sizes.base,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+    flexShrink: 1,
+  },
 });

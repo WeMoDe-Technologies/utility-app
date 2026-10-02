@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 
-import { ThemeProvider } from '@/theme/ThemeProvider';
+import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
+import { ToastHost } from '@/components/ui';
 import { usePreferencesStore } from '@/stores/preferencesStore';
 import { useFavouritesStore } from '@/stores/favouritesStore';
 import { useRecentsStore } from '@/stores/recentsStore';
@@ -51,10 +54,36 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={styles.root}>
-      <ThemeProvider>
-        <Stack screenOptions={{ headerShown: false }} />
-      </ThemeProvider>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <ThemedShell />
+        </ThemeProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+/**
+ * Lives inside ThemeProvider so the status-bar style and the screen background
+ * behind push transitions both follow the active theme. Without the background
+ * the shell flashed white between screens on light-on-dark themes.
+ */
+function ThemedShell() {
+  const { colors, isDark } = useTheme();
+  return (
+    <View style={[styles.root, { backgroundColor: colors.bg }]}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.bg },
+          animation: 'slide_from_right',
+        }}
+      >
+        <Stack.Screen name="onboarding" options={{ animation: 'fade', gestureEnabled: false }} />
+      </Stack>
+      <ToastHost />
+    </View>
   );
 }
 

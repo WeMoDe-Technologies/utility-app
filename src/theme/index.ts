@@ -2,6 +2,14 @@ import { Dimensions } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
 
+/**
+ * Kit — design tokens.
+ *
+ * The visual language is mid-century industrial: flat surfaces, hard offset
+ * shadows instead of blurs, tight corner radii, 2px rules, and uppercase
+ * instrument legends. Nothing here uses gradients or translucency.
+ */
+
 // ─── Spacing & Sizing ─────────────────────────────────────────────────────
 export const spacing = {
   xs: 4,
@@ -16,13 +24,32 @@ export const spacing = {
   '5xl': 64,
 } as const;
 
+/**
+ * Deliberately tight. Rounded-off plastic, not glass — a 1970s keycap has a
+ * 4–8pt corner, not a 24pt one.
+ */
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  '2xl': 24,
+  sm: 2,
+  md: 4,
+  lg: 6,
+  xl: 8,
+  '2xl': 12,
   full: 9999,
+} as const;
+
+/** Rule weights. Retro panels are drawn, not blurred — borders carry the structure. */
+export const border = {
+  hair: 1,
+  base: 2,
+  thick: 3,
+} as const;
+
+/** Hard-shadow offsets, in points. Used by <Plate>. */
+export const plate = {
+  flush: 0,
+  low: 2,
+  base: 3,
+  high: 5,
 } as const;
 
 export const screen = { width, height };
@@ -52,83 +79,69 @@ export const typography = {
     normal: 1.5,
     relaxed: 1.75,
   },
-};
-
-// ─── Color Palette ─────────────────────────────────────────────────────────
-export const palette = {
-  // Brand / Accent
-  indigo: {
-    50: '#EEF2FF',
-    100: '#E0E7FF',
-    400: '#818CF8',
-    500: '#6366F1',
-    600: '#4F46E5',
-    700: '#4338CA',
+  /** Uppercase legends are wide-tracked, like a silkscreened control panel. */
+  tracking: {
+    legend: 1.6,
+    label: 0.8,
+    tight: -0.4,
+    display: -1.2,
   },
-  violet: '#8B5CF6',
-  cyan: '#06B6D4',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-  rose: '#F43F5E',
-  orange: '#F97316',
-  sky: '#0EA5E9',
-  teal: '#14B8A6',
-  pink: '#EC4899',
-  lime: '#84CC16',
-  fuchsia: '#D946EF',
+} as const;
 
-  // Neutrals
+// ─── Printed-ink palette ───────────────────────────────────────────────────
+/**
+ * Muted, slightly desaturated colours that read as enamel or printed ink
+ * rather than backlit pixels. These are the per-tool accents.
+ */
+export const ink = {
+  signal: '#E2561E',
+  rust: '#B4441C',
+  brick: '#A6392B',
+  maroon: '#7A3246',
+  clay: '#B5705A',
+  mustard: '#C2902B',
+  sand: '#A08963',
+  olive: '#6E7A33',
+  moss: '#4C6B3C',
+  teal: '#2E6A66',
+  petrol: '#27566B',
+  slate: '#3C5A7D',
+  plum: '#6B4A6E',
+  graphite: '#2B2A28',
+} as const;
+
+/** Legacy alias — some older modules import `palette`. */
+export const palette = {
   white: '#FFFFFF',
   black: '#000000',
-
-  // Dark palette
-  dark: {
-    bg: '#0A0A0F',
-    surface: '#13131A',
-    card: '#1C1C28',
-    border: '#2A2A3A',
-    muted: '#3A3A50',
-    subtle: '#4A4A62',
-    text: '#E8E8F0',
-    textSecondary: '#9090A8',
-    textTertiary: '#606078',
-  },
-
-  // Light palette
-  light: {
-    bg: '#F7F7FC',
-    surface: '#FFFFFF',
-    card: '#FFFFFF',
-    border: '#E8E8F0',
-    muted: '#F0F0F8',
-    subtle: '#E0E0EC',
-    text: '#0A0A1A',
-    textSecondary: '#5A5A72',
-    textTertiary: '#9090A8',
-  },
+  ...ink,
 } as const;
 
-// ─── Utility Category Colors ───────────────────────────────────────────────
+/** Per-tool accents, keyed by registry id. */
 export const utilityColors = {
-  calculator: '#6366F1',
-  scientificCalculator: '#8B5CF6',
-  unitConverter: '#06B6D4',
-  currencyConverter: '#10B981',
-  emi: '#F59E0B',
-  gst: '#F97316',
-  qrScanner: '#0EA5E9',
-  notes: '#F43F5E',
-  pomodoro: '#EC4899',
-  stopwatch: '#14B8A6',
-  worldClock: '#6366F1',
-  passwordGenerator: '#84CC16',
-  textUtility: '#D946EF',
-  ageCalculator: '#06B6D4',
-  discountCalculator: '#10B981',
-  counter: '#F59E0B',
+  calculator: ink.signal,
+  scientificCalculator: ink.plum,
+  unitConverter: ink.teal,
+  currencyConverter: ink.moss,
+  emi: ink.mustard,
+  gst: ink.rust,
+  qrScanner: ink.petrol,
+  pomodoro: ink.maroon,
+  stopwatch: ink.moss,
+  worldClock: ink.slate,
+  passwordGenerator: ink.olive,
+  ageCalculator: ink.petrol,
+  discountCalculator: ink.olive,
+  counter: ink.mustard,
+  compass: ink.teal,
+  expense: ink.slate,
+  tip: ink.clay,
+  colorPicker: ink.plum,
+  sip: ink.moss,
+  noise: ink.brick,
 } as const;
 
-// ─── Theme Tokens ──────────────────────────────────────────────────────────
+// ─── Theme tokens ──────────────────────────────────────────────────────────
 export interface ThemeColors {
   bg: string;
   surface: string;
@@ -141,61 +154,69 @@ export interface ThemeColors {
   textTertiary: string;
   accent: string;
   accentLight: string;
+  /** Colour of the hard offset shadow cast by plates and keys. */
+  shadow: string;
 }
 
-export const darkTheme: ThemeColors = {
-  bg: '#0A0A0F',
-  surface: '#13131A',
-  card: '#1C1C28',
-  border: '#2A2A3A',
-  muted: '#3A3A50',
-  subtle: '#4A4A62',
-  text: '#E8E8F0',
-  textSecondary: '#9090A8',
-  textTertiary: '#606078',
-  accent: '#6366F1',
-  accentLight: 'rgba(99,102,241,0.15)',
-};
-
 export const lightTheme: ThemeColors = {
-  bg: '#F7F7FC',
-  surface: '#FFFFFF',
-  card: '#FFFFFF',
-  border: '#E8E8F0',
-  muted: '#F0F0F8',
-  subtle: '#E8E8F4',
-  text: '#0A0A1A',
-  textSecondary: '#5A5A72',
-  textTertiary: '#9090A8',
-  accent: '#6366F1',
-  accentLight: 'rgba(99,102,241,0.1)',
+  bg: '#EDEAE1',
+  surface: '#F7F4EC',
+  card: '#FFFDF7',
+  border: '#1E1C19',
+  muted: '#E2DED3',
+  subtle: '#D3CEC1',
+  text: '#1E1C19',
+  textSecondary: '#5A554C',
+  textTertiary: '#8A8377',
+  accent: '#E2561E',
+  accentLight: '#F6DFD3',
+  shadow: '#1E1C19',
 };
 
-// ─── Shadow Presets ────────────────────────────────────────────────────────
+export const darkTheme: ThemeColors = {
+  bg: '#171614',
+  surface: '#201E1B',
+  card: '#2A2724',
+  border: '#0E0D0C',
+  muted: '#312E2A',
+  subtle: '#413D38',
+  text: '#F2EEE4',
+  textSecondary: '#A8A196',
+  textTertiary: '#746D64',
+  accent: '#FF6A2C',
+  accentLight: '#3A2318',
+  shadow: '#0E0D0C',
+};
+
+// ─── Soft shadows ──────────────────────────────────────────────────────────
+/**
+ * Reserved for floating layers (modals, sheets, toasts) that genuinely sit
+ * above the page. Flat surfaces use <Plate> and cast a hard shadow instead.
+ */
 export const shadows = {
   sm: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
     elevation: 2,
   },
   md: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 6,
   },
   lg: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.26,
+    shadowRadius: 22,
+    elevation: 14,
   },
 };
 
-// ─── Re-export new theme registry for convenience ──────────────────────────
+// ─── Re-export the theme registry ──────────────────────────────────────────
 export { THEMES, DARK_THEMES, LIGHT_THEMES, getThemeById, DEFAULT_THEME_ID } from './themes';
 export type { ThemeDefinition } from './themes';

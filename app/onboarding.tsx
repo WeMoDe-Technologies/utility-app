@@ -14,7 +14,6 @@ import Animated, { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import {
   useFonts,
   SpaceGrotesk_700Bold,
@@ -22,11 +21,12 @@ import {
 } from '@expo-google-fonts/space-grotesk';
 
 import { useTheme } from '@/theme/ThemeProvider';
+import { onColour, useHaptic, PressablePlate } from '@/components/ui';
 import { ThemePicker } from '@/components/common/ThemePicker';
 import { UtilityIcon } from '@/components/common/UtilityIcon';
 import { usePreferencesStore } from '@/stores/preferencesStore';
 import { UTILITY_REGISTRY } from '@/registry';
-import { spacing, radius, typography } from '@/theme';
+import { spacing, radius, typography, border, plate } from '@/theme';
 
 const STEP_COUNT = 3;
 // A spread of real tools to preview on step 2 — picked for category variety.
@@ -55,8 +55,9 @@ export default function Onboarding() {
 
   const scrollRef = useRef<ScrollView>(null);
   const [page, setPage] = useState(0);
+  const haptic = useHaptic();
 
-  const accent = activeTheme?.colors?.accent ?? colors.accent ?? '#6366F1';
+  const accent = activeTheme?.colors?.accent ?? colors.accent ?? '#3C5A7D';
   const display = fontsLoaded ? 'SpaceGrotesk_700Bold' : undefined;
   const medium = fontsLoaded ? 'SpaceGrotesk_500Medium' : undefined;
 
@@ -74,19 +75,19 @@ export default function Onboarding() {
     const p = Math.round(e.nativeEvent.contentOffset.x / width);
     if (p !== page) {
       setPage(p);
-      Haptics.selectionAsync();
+      haptic('select');
     }
   };
 
   const handlePrimary = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    haptic('light');
     if (page < STEP_COUNT - 1) goTo(page + 1);
     else finish();
   };
 
   const finish = () => {
     usePreferencesStore.getState().setOnboardingCompleted(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    haptic('success');
     router.replace('/');
   };
 
@@ -147,7 +148,7 @@ export default function Onboarding() {
               entering={FadeInUp.delay(120).duration(450)}
               style={[styles.title, { color: colors.text, fontFamily: display }]}
             >
-              Welcome to Toolr
+              Welcome to Kit
             </Animated.Text>
 
             <Animated.Text
@@ -164,8 +165,13 @@ export default function Onboarding() {
                 { icon: 'lock-closed', label: 'Your data stays on your device' },
               ].map((b) => (
                 <View key={b.label} style={styles.bullet}>
-                  <View style={[styles.bulletIcon, { backgroundColor: accent + '18' }]}>
-                    <Ionicons name={b.icon as any} size={15} color={accent} />
+                  <View
+                    style={[
+                      styles.bulletIcon,
+                      { backgroundColor: accent, borderColor: colors.border },
+                    ]}
+                  >
+                    <Ionicons name={b.icon as any} size={15} color={onColour(accent)} />
                   </View>
                   <Text style={[styles.bulletText, { color: colors.text }]}>{b.label}</Text>
                 </View>
@@ -203,8 +209,13 @@ export default function Onboarding() {
                     { backgroundColor: colors.surface, borderColor: colors.border },
                   ]}
                 >
-                  <View style={[styles.previewIcon, { backgroundColor: u.color + '1A' }]}>
-                    <UtilityIcon utility={u} size={20} color={u.color} />
+                  <View
+                    style={[
+                      styles.previewIcon,
+                      { backgroundColor: u.color, borderColor: colors.border },
+                    ]}
+                  >
+                    <UtilityIcon utility={u} size={20} color={onColour(u.color)} />
                   </View>
                   <Text
                     style={[styles.previewLabel, { color: colors.text }]}
@@ -274,22 +285,23 @@ export default function Onboarding() {
 
       {/* ── Bottom action ────────────────────────────────────────────── */}
       <View style={[styles.footer, { paddingBottom: bottom + spacing.base }]}>
-        <Pressable
+        <PressablePlate
           onPress={handlePrimary}
-          style={({ pressed }) => [
-            styles.cta,
-            { backgroundColor: accent, opacity: pressed ? 0.9 : 1 },
-          ]}
+          accessibilityLabel={isLast ? 'Get started' : 'Continue'}
+          offset={plate.base}
+          radius={radius.md}
+          fill={accent}
+          contentStyle={styles.cta}
         >
-          <Text style={[styles.ctaText, { fontFamily: display }]}>
+          <Text style={[styles.ctaText, { fontFamily: display, color: onColour(accent) }]}>
             {isLast ? 'Get started' : 'Continue'}
           </Text>
           <Ionicons
             name={isLast ? 'checkmark' : 'arrow-forward'}
             size={18}
-            color="#fff"
+            color={onColour(accent)}
           />
-        </Pressable>
+        </PressablePlate>
       </View>
     </View>
   );
@@ -308,7 +320,11 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   dots: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dot: { height: 7, borderRadius: 4 },
+  dot: {
+    height: 8,
+    borderRadius: radius.sm,
+    borderWidth: border.base,
+  },
   skip: { fontSize: typography.sizes.base, fontWeight: '600' },
 
   page: { flex: 1 },
@@ -325,7 +341,7 @@ const styles = StyleSheet.create({
     width: 92,
     height: 92,
     borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: border.base,
   },
 
   title: {
@@ -346,9 +362,10 @@ const styles = StyleSheet.create({
   bulletList: { gap: spacing.sm, alignSelf: 'center', maxWidth: 320, width: '100%' },
   bullet: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   bulletIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: radius.sm + 2,
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    borderWidth: border.base,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -366,16 +383,17 @@ const styles = StyleSheet.create({
     width: '30%',
     aspectRatio: 1,
     borderRadius: radius.xl,
-    borderWidth: 1,
+    borderWidth: border.base,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
     padding: spacing.sm,
   },
   previewIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
+    width: 42,
+    height: 42,
+    borderRadius: radius.sm,
+    borderWidth: border.base,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -387,7 +405,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     borderRadius: radius.xl,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: spacing.base,
     marginTop: spacing.lg,
     marginBottom: spacing.md,
@@ -401,7 +419,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
-    borderRadius: radius.full,
+    borderRadius: radius.sm,
   },
   modeBadgeText: { fontSize: 11, fontWeight: '700' },
 
@@ -413,7 +431,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     height: 54,
-    borderRadius: radius.full,
+    // No radius here: the Plate owns it, and a mismatch would leave the hard
+    // shadow a different shape from the surface it sits behind.
   },
-  ctaText: { color: '#fff', fontSize: 17, letterSpacing: -0.2 },
+  ctaText: { fontSize: 17, letterSpacing: -0.2, fontWeight: '700' },
 });

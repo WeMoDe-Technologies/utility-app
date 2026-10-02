@@ -18,7 +18,7 @@ interface ResultDisplayProps {
 export function ResultDisplay({
   label,
   value,
-  accent = '#6366F1',
+  accent = '#3C5A7D',
   large,
   copyable,
   subtitle,

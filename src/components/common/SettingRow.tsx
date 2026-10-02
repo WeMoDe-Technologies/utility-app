@@ -18,7 +18,7 @@ interface SettingRowProps {
 
 export function SettingRow({
   icon,
-  iconColor = '#6366F1',
+  iconColor = '#3C5A7D',
   label,
   description,
   type,
@@ -40,7 +40,7 @@ export function SettingRow({
         </View>
       )}
       <View style={styles.info}>
-        <Text style={[styles.label, { color: destructive ? '#F43F5E' : colors.text }]}>
+        <Text style={[styles.label, { color: destructive ? '#A6392B' : colors.text }]}>
           {label}
         </Text>
         {description && (

@@ -22,16 +22,16 @@ const ThemeContext = createContext<ThemeContextValue>({
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const systemScheme = useColorScheme();
-  const { themeId, theme: legacyTheme } = usePreferencesStore();
+  const themeId = usePreferencesStore((s) => s.themeId);
 
   const resolvedThemeId = useMemo(() => {
-    // Handle legacy 'system', 'light', 'dark' values from old preferences
-    if (themeId === 'system') {
-      return systemScheme === 'dark' ? 'midnight' : 'ivory';
-    }
-    if (themeId === 'light') return 'ivory';
-    if (themeId === 'dark') return 'midnight';
-    // If it's a valid theme id, use it
+    // Installs from before the Kit redesign may hold 'system' | 'light' | 'dark',
+    // or one of the retired theme ids. The first three map onto the closest
+    // current themes; anything unrecognised falls through to getThemeById's
+    // default rather than leaving the app unstyled.
+    if (themeId === 'system') return systemScheme === 'dark' ? 'graphite' : 'bone';
+    if (themeId === 'light') return 'bone';
+    if (themeId === 'dark') return 'graphite';
     return themeId ?? DEFAULT_THEME_ID;
   }, [themeId, systemScheme]);
 

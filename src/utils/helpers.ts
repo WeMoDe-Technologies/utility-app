@@ -2,28 +2,25 @@
  * General-purpose utility helpers used across screens
  */
 
+import { formatCurrency, formatCurrencyCompact } from './format';
+
 // ── Number formatting ──────────────────────────────────────────────────────
 
+/**
+ * Number/currency formatting lives in `@/utils/format` — it is deterministic
+ * across iOS, Android and Hermes, whereas `Intl` is not. These re-exports keep
+ * one implementation so a future edit can't pick up a divergent copy.
+ */
+export { formatNumber, formatCurrency, formatCurrencyCompact, parseAmount } from './format';
+
+/** @deprecated Use `formatCurrency(value, 'INR')` from '@/utils/format'. */
 export function formatINR(amount: number, decimals = 2): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: decimals,
-    minimumFractionDigits: decimals === 0 ? 0 : undefined,
-  }).format(amount);
+  return formatCurrency(amount, 'INR', { decimals });
 }
 
-export function formatNumber(n: number, decimals = 2): string {
-  return new Intl.NumberFormat('en-IN', {
-    maximumFractionDigits: decimals,
-  }).format(n);
-}
-
+/** @deprecated Use `formatCurrencyCompact` from '@/utils/format'. */
 export function formatCompact(n: number): string {
-  if (Math.abs(n) >= 1_00_00_000) return `${(n / 1_00_00_000).toFixed(2)} Cr`;
-  if (Math.abs(n) >= 1_00_000) return `${(n / 1_00_000).toFixed(2)} L`;
-  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)} K`;
-  return n.toFixed(2);
+  return formatCurrencyCompact(n, 'INR');
 }
 
 // ── Time formatting ────────────────────────────────────────────────────────
@@ -58,7 +55,7 @@ export function relativeTime(ts: number): string {
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
-  return new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
 // ── String helpers ─────────────────────────────────────────────────────────
@@ -76,12 +73,12 @@ export function capitalize(str: string): string {
 
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { Alert } from 'react-native';
+import { toast } from '@/components/ui';
 
-export async function copyToClipboard(text: string, label = 'Copied!'): Promise<void> {
+export async function copyToClipboard(text: string, label = 'Copied to clipboard'): Promise<void> {
   await Clipboard.setStringAsync(text);
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  Alert.alert(label, 'Copied to clipboard.');
+  toast(label);
 }
 
 // ── Color helpers ─────────────────────────────────────────────────────────

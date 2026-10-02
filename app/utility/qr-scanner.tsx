@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -13,12 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
 
 import { UtilityHeader } from '@/components/common/UtilityHeader';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useUtilityState } from '@/hooks/useUtilityState';
-import { spacing, radius, typography } from '@/theme';
+import { Notice, useHaptic, toast } from '@/components/ui';
+import { spacing, radius, typography, border } from '@/theme';
 
 interface QRState {
   history: Array<{ data: string; timestamp: number; type: string }>;
@@ -45,37 +45,86 @@ export default function QRScannerScreen() {
   const { state, setState, clearState } = useUtilityState<QRState>('qrScanner', DEFAULT_STATE);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
-  const [lastScan, setLastScan] = useState(0);
+  const haptic = useHaptic();
+  // A ref, not state: the camera fires the callback many times per second and
+  // a state update wouldn't land before the next frame's check.
+  const lastScanRef = useRef(0);
 
-  const handleBarCodeScanned = ({ data }: { data: string }) => {
-    const now = Date.now();
-    if (now - lastScan < 2000) return; // Debounce
-    setLastScan(now);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  const handleBarCodeScanned = useCallback(
+    ({ data }: { data: string }) => {
+      const now = Date.now();
+      if (!data || now - lastScanRef.current < 1500) return;
+      lastScanRef.current = now;
+      haptic('success');
+      const type = detectType(data);
+      setState((p) => ({
+        lastScanned: data,
+        // Don't stack duplicates of the same code back to back
+        history: [{ data, timestamp: now, type }, ...p.history.filter((h) => h.data !== data)].slice(0, 50),
+      }));
+      setScanning(false);
+      toast(`${type} scanned`);
+    },
+    [setState, haptic],
+  );
+
+  const handleCopy = useCallback(
+    async (data: string) => {
+      await Clipboard.setStringAsync(data);
+      haptic('success');
+      toast('Copied to clipboard');
+    },
+    [haptic],
+  );
+
+  /**
+   * Opening a scanned link sends the user somewhere a stranger's QR code chose,
+   * so it always asks first and shows the destination in full.
+   */
+  const handleOpen = useCallback((data: string) => {
     const type = detectType(data);
-    setState((p) => ({
-      lastScanned: data,
-      history: [{ data, timestamp: now, type }, ...p.history].slice(0, 50),
-    }));
-    setScanning(false);
-  };
+    const url =
+      type === 'Phone' && !data.startsWith('tel:')
+        ? `tel:${data.replace(/[^\d+]/g, '')}`
+        : data;
 
-  const handleCopy = async (data: string) => {
-    await Clipboard.setStringAsync(data);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert('Copied!', 'Text copied to clipboard.');
-  };
+    Alert.alert(
+      `Open this ${type.toLowerCase()}?`,
+      url,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Open',
+          onPress: async () => {
+            try {
+              const supported = await Linking.canOpenURL(url);
+              if (!supported) {
+                toast("This device can't open that link", 'error');
+                return;
+              }
+              await Linking.openURL(url);
+            } catch {
+              toast("Couldn't open that link", 'error');
+            }
+          },
+        },
+      ],
+    );
+  }, []);
 
-  const handleOpen = (data: string) => {
-    const type = detectType(data);
-    if (type === 'URL') {
-      Linking.openURL(data);
-    } else if (type === 'Email') {
-      Linking.openURL(data);
-    } else if (type === 'Phone') {
-      Linking.openURL(`tel:${data.replace(/\D/g, '')}`);
+  const startScanning = useCallback(async () => {
+    haptic('light');
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      // Don't drop the user onto a black camera view they can't use
+      if (!result.granted) {
+        toast('Camera access is needed to scan', 'error');
+        return;
+      }
     }
-  };
+    lastScanRef.current = 0;
+    setScanning(true);
+  }, [permission?.granted, requestPermission, haptic]);
 
   if (scanning) {
     return (
@@ -105,11 +154,24 @@ export default function QRScannerScreen() {
           </CameraView>
         ) : (
           <View style={styles.permDenied}>
-            <Text style={{ color: '#fff', textAlign: 'center' }}>
-              Camera permission required
+            <Ionicons name="camera-outline" size={40} color="#fff" />
+            <Text style={styles.permTitle}>Camera access needed</Text>
+            <Text style={styles.permBody}>
+              {permission?.canAskAgain === false
+                ? 'Enable camera access for Kit in your device settings, then come back.'
+                : 'Kit uses the camera only to read codes. Nothing is uploaded or stored.'}
             </Text>
-            <Pressable onPress={requestPermission} style={styles.permBtn}>
-              <Text style={{ color: '#0EA5E9', fontWeight: '600' }}>Grant Permission</Text>
+            {permission?.canAskAgain === false ? (
+              <Pressable onPress={() => Linking.openSettings()} style={styles.permBtn}>
+                <Text style={styles.permBtnTxt}>Open settings</Text>
+              </Pressable>
+            ) : (
+              <Pressable onPress={requestPermission} style={styles.permBtn}>
+                <Text style={styles.permBtnTxt}>Grant permission</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={() => setScanning(false)} style={styles.permBtn}>
+              <Text style={[styles.permBtnTxt, { color: '#8A8377' }]}>Go back</Text>
             </Pressable>
           </View>
         )}
@@ -122,7 +184,7 @@ export default function QRScannerScreen() {
       <UtilityHeader
         title="QR Scanner"
         utilityId="qrScanner"
-        accentColor="#0EA5E9"
+        accentColor="#27566B"
         onClearData={clearState}
       />
 
@@ -133,13 +195,12 @@ export default function QRScannerScreen() {
           style={styles.scanBtnContainer}
         >
           <Pressable
-            onPress={async () => {
-              if (!permission?.granted) await requestPermission();
-              setScanning(true);
-            }}
-            style={[styles.bigScanBtn, { backgroundColor: '#0EA5E910', borderColor: '#0EA5E940' }]}
+            onPress={startScanning}
+            accessibilityRole="button"
+            accessibilityLabel="Scan a QR code or barcode"
+            style={[styles.bigScanBtn, { backgroundColor: '#27566B10', borderColor: '#27566B40' }]}
           >
-            <View style={[styles.scanIconBg, { backgroundColor: '#0EA5E9' }]}>
+            <View style={[styles.scanIconBg, { backgroundColor: '#27566B' }]}>
               <Ionicons name="qr-code" size={40} color="#fff" />
             </View>
             <Text style={[styles.scanBtnLabel, { color: colors.text }]}>Tap to Scan</Text>
@@ -153,10 +214,10 @@ export default function QRScannerScreen() {
         {state.lastScanned ? (
           <Animated.View
             entering={FadeInDown.delay(100).duration(300)}
-            style={[styles.lastCard, { backgroundColor: colors.surface, borderColor: '#0EA5E940' }]}
+            style={[styles.lastCard, { backgroundColor: colors.surface, borderColor: '#27566B40' }]}
           >
             <View style={styles.lastHeader}>
-              <Text style={[styles.lastTitle, { color: '#0EA5E9' }]}>Last Scanned</Text>
+              <Text style={[styles.lastTitle, { color: '#27566B' }]}>Last Scanned</Text>
               <Text style={[styles.lastType, { color: colors.textSecondary, backgroundColor: colors.muted }]}>
                 {detectType(state.lastScanned)}
               </Text>
@@ -175,10 +236,10 @@ export default function QRScannerScreen() {
               {['URL', 'Email', 'Phone'].includes(detectType(state.lastScanned)) && (
                 <Pressable
                   onPress={() => handleOpen(state.lastScanned)}
-                  style={[styles.actionBtn, { backgroundColor: '#0EA5E920' }]}
+                  style={[styles.actionBtn, { backgroundColor: '#27566B20' }]}
                 >
-                  <Ionicons name="open-outline" size={16} color="#0EA5E9" />
-                  <Text style={[styles.actionBtnText, { color: '#0EA5E9' }]}>Open</Text>
+                  <Ionicons name="open-outline" size={16} color="#27566B" />
+                  <Text style={[styles.actionBtnText, { color: '#27566B' }]}>Open</Text>
                 </Pressable>
               )}
             </View>
@@ -195,7 +256,7 @@ export default function QRScannerScreen() {
                 onPress={() => handleCopy(item.data)}
                 style={[styles.histRow, { borderBottomColor: colors.border }]}
               >
-                <View style={[styles.histIcon, { backgroundColor: '#0EA5E920' }]}>
+                <View style={[styles.histIcon, { backgroundColor: '#27566B20' }]}>
                   <Ionicons
                     name={
                       item.type === 'URL' ? 'link' :
@@ -203,7 +264,7 @@ export default function QRScannerScreen() {
                       item.type === 'Email' ? 'mail' : 'text'
                     }
                     size={14}
-                    color="#0EA5E9"
+                    color="#27566B"
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -276,7 +337,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: CORNER_SIZE,
     height: CORNER_SIZE,
-    borderColor: '#0EA5E9',
+    borderColor: '#27566B',
   },
   tl: { top: 0, left: 0, borderTopWidth: CORNER_WIDTH, borderLeftWidth: CORNER_WIDTH },
   tr: { top: 0, right: 0, borderTopWidth: CORNER_WIDTH, borderRightWidth: CORNER_WIDTH },
@@ -288,10 +349,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  permDenied: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
-  permBtn: { padding: 12 },
+  permDenied: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 32 },
+  permTitle: { color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  permBody: { color: '#D3CEC1', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  permBtn: { paddingVertical: 10, paddingHorizontal: 20 },
+  permBtnTxt: { color: '#27566B', fontWeight: '700', fontSize: 15 },
   // Cards
-  lastCard: { borderRadius: radius.xl, borderWidth: 1, padding: spacing.base, gap: spacing.sm },
+  lastCard: { borderRadius: radius.xl, borderWidth: border.base, padding: spacing.base, gap: spacing.sm },
   lastHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   lastTitle: { fontSize: typography.sizes.sm, fontWeight: '700', letterSpacing: 0.5 },
   lastType: { fontSize: 11, fontWeight: '600', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
@@ -303,7 +367,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
-    borderRadius: radius.full,
+    borderRadius: radius.sm,
   },
   actionBtnText: { fontSize: 13, fontWeight: '600' },
   histTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginBottom: spacing.xs },

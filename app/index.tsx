@@ -1,230 +1,278 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   StyleSheet,
   View,
   Text,
-  Image,
   ScrollView,
   Pressable,
+  TextInput,
+  Keyboard,
 } from 'react-native';
-import Animated, {
-  FadeInDown,
-  useAnimatedScrollHandler,
-  useSharedValue,
-  useAnimatedStyle,
-  interpolate,
-  Extrapolate,
-} from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import Svg, { Rect } from 'react-native-svg';
-import {
-  useFonts,
-  SpaceGrotesk_700Bold,
-  SpaceGrotesk_500Medium,
-} from '@expo-google-fonts/space-grotesk';
 
 import { UtilityCard } from '@/components/common/UtilityCard';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useFavouritesStore } from '@/stores/favouritesStore';
 import { useRecentsStore } from '@/stores/recentsStore';
+import { Plate, PressablePlate, Rule, useHaptic, onColour } from '@/components/ui';
 import { UTILITY_REGISTRY } from '@/registry';
-import { spacing, typography, radius } from '@/theme';
+import { CATEGORIES, type CategoryKey } from '@/constants';
+import { spacing, typography, radius, border, plate } from '@/theme';
+import type { UtilityDefinition } from '@/types';
 
-const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
-type UtilityEntry = typeof UTILITY_REGISTRY[number];
+// Section order: most-reached-for first.
+const CATEGORY_ORDER: CategoryKey[] = ['math', 'converter', 'finance', 'time', 'productivity', 'tools'];
 
-// ─── Toolr mark — app icon ───────────────────────────────────────────────────
-// Renders the app icon (assets/icon.png) at the same 34×34 footprint as before
-function ToolrMark() {
+/**
+ * KIT — the logotype. Three letters in a ruled box, the way a tool is stamped
+ * with its maker's mark.
+ */
+function KitMark({ fg, bg }: { fg: string; bg: string }) {
   return (
-    <Image
-      source={require('../assets/icon.png')}
-      style={styles.brandMark}
-      resizeMode="contain"
-    />
+    <View style={[styles.mark, { backgroundColor: bg, borderColor: fg }]}>
+      <Text style={[styles.markText, { color: fg }]}>KIT</Text>
+    </View>
   );
 }
 
-// ─── Settings icon — custom modern grid icon ─────────────────────────────────
-function SettingsIcon({ color }: { color: string }) {
-  // Three horizontal lines with a dot indicator — modern "tune" style
+// ─── Grid of tool keys, 4 per row ────────────────────────────────────────────
+function Grid({ utilities }: { utilities: UtilityDefinition[] }) {
+  const rows: React.ReactNode[] = [];
+  for (let i = 0; i < utilities.length; i += 4) {
+    const chunk = utilities.slice(i, i + 4);
+    rows.push(
+      <View key={i} style={styles.row}>
+        {chunk.map((u, j) => (
+          <UtilityCard key={u.id} utility={u} index={i + j} />
+        ))}
+        {chunk.length < 4 &&
+          Array.from({ length: 4 - chunk.length }).map((_, j) => (
+            <View key={`empty-${j}`} style={styles.emptySlot} />
+          ))}
+      </View>
+    );
+  }
+  return <View style={styles.gridRows}>{rows}</View>;
+}
+
+/** A ruled section title, numbered like an index. */
+function SectionTitle({
+  label,
+  count,
+  index,
+}: {
+  label: string;
+  count?: number;
+  index?: string;
+}) {
+  const { colors } = useTheme();
   return (
-    <Svg width={20} height={20} viewBox="0 0 20 20">
-      {/* Line 1 + knob */}
-      <Rect x={2} y={4} width={16} height={1.8} rx={0.9} fill={color} opacity={0.9} />
-      <Rect x={10} y={2.4} width={4} height={5} rx={2} fill={color} opacity={0.9} />
-      {/* Line 2 + knob */}
-      <Rect x={2} y={9.1} width={16} height={1.8} rx={0.9} fill={color} opacity={0.9} />
-      <Rect x={4} y={7.5} width={4} height={5} rx={2} fill={color} opacity={0.9} />
-      {/* Line 3 + knob */}
-      <Rect x={2} y={14.2} width={16} height={1.8} rx={0.9} fill={color} opacity={0.9} />
-      <Rect x={12} y={12.6} width={4} height={5} rx={2} fill={color} opacity={0.9} />
-    </Svg>
+    <View style={styles.sectionRow}>
+      {index ? (
+        <Text style={[styles.sectionIndex, { color: colors.accent }]}>{index}</Text>
+      ) : null}
+      <Text style={[styles.sectionLabel, { color: colors.text }]}>{label.toUpperCase()}</Text>
+      <Rule style={styles.sectionRule} />
+      {count !== undefined && (
+        <Text style={[styles.sectionCount, { color: colors.textTertiary }]}>
+          {String(count).padStart(2, '0')}
+        </Text>
+      )}
+    </View>
   );
 }
 
-// ─── Home Screen ─────────────────────────────────────────────────────────────
+// ─── Home ────────────────────────────────────────────────────────────────────
 export default function HomeScreen() {
-  const { colors, theme } = useTheme();
+  const { colors } = useTheme();
   const { top } = useSafeAreaInsets();
-  const { favourites: favouriteIds = [] }   = useFavouritesStore();
-  const { recents: recentEntries = [] }     = useRecentsStore();
+  const favouriteIds = useFavouritesStore((s) => s.favourites);
+  const recentEntries = useRecentsStore((s) => s.recents);
+  const haptic = useHaptic();
 
-  const [fontsLoaded] = useFonts({
-    SpaceGrotesk_700Bold,
-    SpaceGrotesk_500Medium,
-  });
+  const [query, setQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
 
-  const scrollY = useSharedValue(0);
-  const scrollHandler = useAnimatedScrollHandler((e) => {
-    scrollY.value = e.contentOffset.y;
-  });
-
-  // Subtle header compress on scroll
-  const headerStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 80], [1, 0.97], Extrapolate.CLAMP),
-    transform: [
-      { translateY: interpolate(scrollY.value, [0, 80], [0, -2], Extrapolate.CLAMP) },
-    ],
-  }));
-
-  // Pill badge: total utility count
   const totalCount = UTILITY_REGISTRY.length;
+  const trimmedQuery = query.trim().toLowerCase();
 
-  // Sort: recents first, then registry order
-  const sortedUtilities = useMemo<UtilityEntry[]>(() => {
-    const recentMap = new Map(recentEntries.map((e) => [e.id, e.lastUsedAt]));
-    return [...UTILITY_REGISTRY].sort((a, b) => {
-      const at = recentMap.get(a.id) ?? 0;
-      const bt = recentMap.get(b.id) ?? 0;
-      if (at && bt) return bt - at;
-      if (at) return -1;
-      if (bt) return 1;
-      return 0;
-    });
+  const searchResults = useMemo(() => {
+    if (!trimmedQuery) return null;
+    return UTILITY_REGISTRY.filter((u) =>
+      u.title.toLowerCase().includes(trimmedQuery) ||
+      u.description.toLowerCase().includes(trimmedQuery) ||
+      u.category.toLowerCase().includes(trimmedQuery)
+    );
+  }, [trimmedQuery]);
+
+  const favourites = useMemo(
+    () => UTILITY_REGISTRY.filter((u) => favouriteIds.includes(u.id)),
+    [favouriteIds],
+  );
+
+  const recents = useMemo(() => {
+    return [...recentEntries]
+      .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+      .slice(0, 8)
+      .map((e) => UTILITY_REGISTRY.find((u) => u.id === e.id))
+      .filter((u): u is UtilityDefinition => !!u);
   }, [recentEntries]);
 
-  const renderGrid = (utilities: UtilityEntry[]) => {
-    const rows: React.ReactNode[] = [];
-    for (let i = 0; i < utilities.length; i += 4) {
-      const chunk = utilities.slice(i, i + 4);
-      rows.push(
-        <View key={i} style={styles.row}>
-          {chunk.map((u) => (
-            <UtilityCard
-              key={u.id}
-              utility={u}
-              recentEntry={recentEntries.find((r) => r.id === u.id)}
-            />
-          ))}
-          {chunk.length < 4 &&
-            Array.from({ length: 4 - chunk.length }).map((_, j) => (
-              <View key={`empty-${j}`} style={styles.emptySlot} />
-            ))}
-        </View>
-      );
-    }
-    return rows;
-  };
+  const grouped = useMemo(() => {
+    return CATEGORY_ORDER.map((key) => ({
+      key,
+      meta: CATEGORIES[key],
+      items: UTILITY_REGISTRY.filter((u) => u.category === key),
+    })).filter((g) => g.items.length > 0);
+  }, []);
 
-  const accent = theme?.colors?.accent ?? '#6366F1';
+  const clearSearch = useCallback(() => {
+    setQuery('');
+    Keyboard.dismiss();
+  }, []);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
 
-      {/* ══════════════════════════════════════════
-          HEADER
-      ══════════════════════════════════════════ */}
-      <Animated.View
+      {/* ══════════ FASCIA ══════════ */}
+      <View
         style={[
           styles.header,
-          {
-            paddingTop: top + 10,
-            backgroundColor: colors.surface,
-            borderBottomColor: colors.border,
-          },
-          headerStyle,
+          { paddingTop: top + spacing.sm, backgroundColor: colors.surface },
         ]}
       >
-        {/* ── Top row: logo + wordmark + settings ── */}
         <View style={styles.headerTop}>
-
-          {/* Left: mark + wordmark stacked */}
           <View style={styles.brandRow}>
-            <ToolrMark />
+            <KitMark fg={colors.text} bg={colors.accent} />
             <View style={styles.wordmarkCol}>
-              <Text
-                style={[
-                  styles.wordmark,
-                  {
-                    color: colors.text,
-                    fontFamily: fontsLoaded ? 'SpaceGrotesk_700Bold' : undefined,
-                  },
-                ]}
-              >
-                ToolR
-              </Text>
-              <Text
-                style={[
-                  styles.tagline,
-                  {
-                    color: colors.textSecondary,
-                    fontFamily: fontsLoaded ? 'SpaceGrotesk_500Medium' : undefined,
-                  },
-                ]}
-              >
-                Your pocket utility kit
+              <Text style={[styles.wordmark, { color: colors.text }]}>KIT</Text>
+              <Text style={[styles.tagline, { color: colors.textSecondary }]}>
+                {String(totalCount).padStart(2, '0')} POCKET TOOLS
               </Text>
             </View>
           </View>
 
-          {/* Right: count badge + settings */}
-          <View style={styles.headerActions}>
-            {/* Utility count badge */}
-            <View style={[styles.countBadge, { backgroundColor: accent + '18', borderColor: accent + '35' }]}>
-              <Text style={[styles.countBadgeTxt, { color: accent }]}>
-                {totalCount} tools
-              </Text>
-            </View>
-
-            {/* Settings button */}
-            <Pressable
-              onPress={() => router.push('/settings')}
-              hitSlop={10}
-              style={({ pressed }) => [
-                styles.settingsBtn,
-                {
-                  backgroundColor: pressed ? colors.card : colors.muted,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <SettingsIcon color={colors.textSecondary} />
-            </Pressable>
-          </View>
+          <PressablePlate
+            onPress={() => { haptic('light'); router.push('/settings'); }}
+            accessibilityLabel="Settings"
+            offset={plate.low}
+            radius={radius.sm}
+            fill={colors.card}
+            contentStyle={styles.settingsBtn}
+          >
+            <Ionicons name="options-outline" size={18} color={colors.text} />
+          </PressablePlate>
         </View>
 
-        {/* ── Divider with gradient shimmer ── */}
-        <View style={[styles.headerDivider, { backgroundColor: colors.border }]} />
-      </Animated.View>
+        {/* Search well */}
+        <Plate
+          offset={plate.flush}
+          radius={radius.sm}
+          fill={colors.muted}
+          borderColor={searchFocused ? colors.accent : colors.subtle}
+          contentStyle={styles.search}
+        >
+          <Ionicons
+            name="search"
+            size={15}
+            color={searchFocused ? colors.accent : colors.textTertiary}
+          />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            placeholder="SEARCH TOOLS"
+            placeholderTextColor={colors.textTertiary}
+            style={[styles.searchInput, { color: colors.text }]}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            returnKeyType="search"
+            selectionColor={colors.accent}
+            clearButtonMode="never"
+          />
+          {query.length > 0 && (
+            <Pressable onPress={clearSearch} hitSlop={10} accessibilityLabel="Clear search">
+              <Ionicons name="close" size={16} color={colors.textSecondary} />
+            </Pressable>
+          )}
+        </Plate>
+      </View>
 
-      {/* ══════════════════════════════════════════
-          GRID
-      ══════════════════════════════════════════ */}
-      <AnimatedScrollView
-        onScroll={scrollHandler}
-        scrollEventThrottle={16}
+      <View style={[styles.fasciaRule, { backgroundColor: colors.border }]} />
+
+      {/* ══════════ INDEX ══════════ */}
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <Animated.View entering={FadeInDown.duration(300)}>
-          <View style={styles.grid}>
-            {renderGrid(sortedUtilities)}
-          </View>
-        </Animated.View>
-      </AnimatedScrollView>
+        {searchResults ? (
+          searchResults.length > 0 ? (
+            <Animated.View entering={FadeIn.duration(140)}>
+              <SectionTitle label="Results" count={searchResults.length} />
+              <Grid utilities={searchResults} />
+            </Animated.View>
+          ) : (
+            <Animated.View entering={FadeIn.duration(140)}>
+              <Plate contentStyle={styles.noResults}>
+                <Text style={[styles.noResultsTitle, { color: colors.text }]}>
+                  NO MATCH
+                </Text>
+                <Text style={[styles.noResultsSub, { color: colors.textSecondary }]}>
+                  Nothing in the kit matches “{query.trim()}”. Try a shorter word, or
+                  browse the sections below.
+                </Text>
+                <PressablePlate
+                  onPress={clearSearch}
+                  offset={plate.low}
+                  radius={radius.sm}
+                  fill={colors.accent}
+                  contentStyle={styles.noResultsBtn}
+                >
+                  <Text style={[styles.noResultsBtnTxt, { color: onColour(colors.accent) }]}>
+                    CLEAR SEARCH
+                  </Text>
+                </PressablePlate>
+              </Plate>
+            </Animated.View>
+          )
+        ) : (
+          <>
+            {favourites.length > 0 && (
+              <View style={styles.section}>
+                <SectionTitle label="Favourites" count={favourites.length} index="★" />
+                <Grid utilities={favourites} />
+              </View>
+            )}
+
+            {recents.length > 0 && (
+              <View style={styles.section}>
+                <SectionTitle label="Recent" index="↻" />
+                <Grid utilities={recents} />
+              </View>
+            )}
+
+            {grouped.map((group, i) => (
+              <View key={group.key} style={styles.section}>
+                <SectionTitle
+                  label={group.meta.label}
+                  count={group.items.length}
+                  index={String(i + 1).padStart(2, '0')}
+                />
+                <Grid utilities={group.items} />
+              </View>
+            ))}
+
+            <Text style={[styles.colophon, { color: colors.textTertiary }]}>
+              KIT · {String(totalCount).padStart(2, '0')} TOOLS · NO ACCOUNT · WORKS OFFLINE
+            </Text>
+          </>
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -233,88 +281,128 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  // Header
   header: {
     paddingHorizontal: spacing.base,
     paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    zIndex: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 6,
+    gap: spacing.md,
   },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
   },
 
   // Brand
-  brandMark: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-  },
-  brandRow: {
-    flexDirection: 'row',
+  mark: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.sm,
+    borderWidth: border.base,
     alignItems: 'center',
-    gap: spacing.sm + 2,
+    justifyContent: 'center',
   },
-  wordmarkCol: {
-    gap: 1,
+  markText: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  wordmarkCol: { gap: 2 },
   wordmark: {
     fontSize: 26,
-    letterSpacing: -0.8,
-    lineHeight: 30,
+    fontWeight: '800',
+    letterSpacing: 3,
+    lineHeight: 28,
   },
   tagline: {
-    fontSize: 11,
-    letterSpacing: 0.1,
-    lineHeight: 14,
+    fontSize: 9.5,
+    fontWeight: '700',
+    letterSpacing: typography.tracking.legend,
   },
 
-  // Right actions
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  countBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  countBadgeTxt: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
   settingsBtn: {
     width: 38,
     height: 38,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  headerDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginTop: spacing.xs,
-    opacity: 0.6,
+  // Search
+  search: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    height: 40,
+    paddingHorizontal: spacing.md,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: typography.sizes.sm,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    padding: 0,
+  },
+
+  fasciaRule: { height: border.thick },
+
+  // Index
+  scrollContent: {
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing['4xl'],
+  },
+  section: { marginBottom: spacing.xl },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  sectionIndex: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: typography.tracking.legend,
+  },
+  sectionRule: { flex: 1 },
+  sectionCount: {
+    fontSize: 10,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
 
   // Grid
-  scrollContent: {
-    padding: spacing.base,
-    paddingBottom: spacing['5xl'],
-  },
-  grid: { gap: spacing.xl },
+  gridRows: { gap: spacing.sm },
   row: { flexDirection: 'row', gap: spacing.sm },
   emptySlot: { flex: 1 },
+
+  // Empty search
+  noResults: { alignItems: 'center', padding: spacing.xl, gap: spacing.sm },
+  noResultsTitle: {
+    fontSize: typography.sizes.md,
+    fontWeight: '800',
+    letterSpacing: typography.tracking.legend,
+  },
+  noResultsSub: {
+    fontSize: typography.sizes.sm,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  noResultsBtn: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  noResultsBtnTxt: { fontSize: typography.sizes.sm, fontWeight: '800', letterSpacing: 0.8 },
+
+  colophon: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
 });

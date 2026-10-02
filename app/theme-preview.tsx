@@ -10,14 +10,15 @@ import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 
 import { useTheme } from '@/theme/ThemeProvider';
-import { spacing, radius, typography, shadows } from '@/theme';
+import { useHaptic } from '@/components/ui';
+import { spacing, radius, typography, shadows, border } from '@/theme';
 
 // A live preview screen that shows the current theme applied to real UI elements
 export default function ThemePreviewScreen() {
   const { colors, isDark, theme } = useTheme();
+  const haptic = useHaptic();
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.bg }]} edges={['bottom']}>
@@ -113,19 +114,19 @@ export default function ThemePreviewScreen() {
           <Label text="Buttons" colors={colors} />
           <View style={styles.buttonRow}>
             <Pressable
-              onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+              onPress={() => haptic('light')}
               style={[styles.primaryBtn, { backgroundColor: colors.accent }]}
             >
               <Text style={styles.primaryBtnText}>Primary</Text>
             </Pressable>
             <Pressable
-              onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+              onPress={() => haptic('light')}
               style={[styles.secondaryBtn, { backgroundColor: colors.accentLight, borderColor: colors.accent }]}
             >
               <Text style={[styles.secondaryBtnText, { color: colors.accent }]}>Secondary</Text>
             </Pressable>
             <Pressable
-              onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+              onPress={() => haptic('light')}
               style={[styles.ghostBtn, { borderColor: colors.border }]}
             >
               <Text style={[styles.ghostBtnText, { color: colors.textSecondary }]}>Ghost</Text>
@@ -139,9 +140,9 @@ export default function ThemePreviewScreen() {
           <View style={styles.cardsRow}>
             {[
               { icon: 'calculator', label: 'Calculator', color: colors.accent },
-              { icon: 'time', label: 'Stopwatch', color: '#14B8A6' },
-              { icon: 'document-text', label: 'Notes', color: '#F43F5E' },
-              { icon: 'qr-code', label: 'QR Scanner', color: '#0EA5E9' },
+              { icon: 'time', label: 'Stopwatch', color: '#2E6A66' },
+              { icon: 'document-text', label: 'Notes', color: '#A6392B' },
+              { icon: 'qr-code', label: 'QR Scanner', color: '#27566B' },
             ].map(({ icon, label, color }) => (
               <View
                 key={label}
@@ -225,7 +226,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: spacing.sm,
     paddingVertical: 5,
-    borderRadius: radius.full,
+    borderRadius: radius.sm,
   },
   darkBadgeText: { fontSize: 12, fontWeight: '700' },
   content: { padding: spacing.base, gap: spacing.base, paddingBottom: 60 },
@@ -238,9 +239,10 @@ const styles = StyleSheet.create({
   },
   // Accent
   accentRow: { flexDirection: 'row', height: 36, borderRadius: radius.lg, overflow: 'hidden', gap: 2 },
+  accentSwatch: { height: '100%' },
   accentHex: { fontSize: 11, fontFamily: 'monospace', marginTop: 4 },
   // Typography
-  card: { borderRadius: radius.xl, borderWidth: 1, padding: spacing.base, gap: spacing.sm },
+  card: { borderRadius: radius.xl, borderWidth: border.base, padding: spacing.base, gap: spacing.sm },
   typRow: { gap: 2 },
   typLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
   // Tokens
@@ -248,12 +250,12 @@ const styles = StyleSheet.create({
   tokenCard: {
     width: '30%',
     borderRadius: radius.lg,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: spacing.sm,
     gap: 4,
     alignItems: 'center',
   },
-  tokenSwatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 1 },
+  tokenSwatch: { width: 36, height: 36, borderRadius: 18, borderWidth: border.base },
   tokenName: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
   tokenHex: { fontSize: 9, fontFamily: 'monospace', textAlign: 'center' },
   // Buttons
@@ -270,7 +272,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderRadius: radius.xl,
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: border.base,
   },
   secondaryBtnText: { fontWeight: '700', fontSize: typography.sizes.sm },
   ghostBtn: {
@@ -278,7 +280,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderRadius: radius.xl,
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: border.base,
   },
   ghostBtnText: { fontWeight: '600', fontSize: typography.sizes.sm },
   // Cards
@@ -286,7 +288,7 @@ const styles = StyleSheet.create({
   previewUtilCard: {
     flex: 1,
     borderRadius: radius.lg,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: spacing.sm,
     alignItems: 'center',
     gap: spacing.xs,
@@ -299,7 +301,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     borderRadius: radius.xl,
-    borderWidth: 1.5,
+    borderWidth: border.base,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     marginBottom: spacing.sm,
@@ -309,8 +311,8 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 1,
-    borderRadius: radius.full,
-    borderWidth: 1,
+    borderRadius: radius.sm,
+    borderWidth: border.base,
   },
   chipText: { fontSize: typography.sizes.sm, fontWeight: '600' },
   // Desc
@@ -319,7 +321,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     borderRadius: radius.xl,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: spacing.base,
   },
   descEmoji: { fontSize: 32 },

@@ -1,73 +1,111 @@
 import { create } from 'zustand';
 import { loadJSON, saveJSON, StorageKeys } from '@/utils/storage';
+import { THEME_MAP, DEFAULT_THEME_ID } from '@/theme/themes';
+import { CURRENCIES, type CurrencyCode } from '@/utils/format';
 
-export type ThemeId =
-  | 'midnight' | 'ivory' | 'obsidian' | 'aurora' | 'ember'
-  | 'galaxy' | 'ocean' | 'sand' | 'rose' | 'forest' | 'slate' | 'neon';
+/**
+ * A theme id is any key in the theme registry. Legacy installs may still hold
+ * 'system' | 'light' | 'dark' from an older build — ThemeProvider maps those
+ * onto real themes, so the type stays wide on purpose.
+ */
+export type ThemeId = string;
 
 interface PreferencesState {
   themeId: ThemeId;
   hapticsEnabled: boolean;
-  // hapticFeedback is an alias for hapticsEnabled — used by components
+  /** Alias of hapticsEnabled — components read either name. */
   hapticFeedback: boolean;
   showUsageCount: boolean;
+  currency: CurrencyCode;
   onboardingCompleted: boolean;
   // ── Actions ──
   setThemeId: (id: ThemeId) => void;
   setHapticsEnabled: (v: boolean) => void;
-  setHapticFeedback: (v: boolean) => void;  // alias for setHapticsEnabled
+  setHapticFeedback: (v: boolean) => void;
   setShowUsageCount: (v: boolean) => void;
+  setCurrency: (c: CurrencyCode) => void;
   setOnboardingCompleted: (v: boolean) => void;
   hydrate: () => Promise<void>;
 }
 
 const DEFAULTS = {
-  themeId: 'midnight' as ThemeId,
+  themeId: DEFAULT_THEME_ID as ThemeId,
   hapticsEnabled: true,
   showUsageCount: true,
+  currency: 'INR' as CurrencyCode,
   onboardingCompleted: false,
 };
 
+/** Only persist data — never the action functions that also live on the store. */
+function persist(state: PreferencesState) {
+  saveJSON(StorageKeys.PREFERENCES, {
+    themeId: state.themeId,
+    hapticsEnabled: state.hapticsEnabled,
+    showUsageCount: state.showUsageCount,
+    currency: state.currency,
+    onboardingCompleted: state.onboardingCompleted,
+  });
+}
+
 export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   ...DEFAULTS,
-  // hapticFeedback mirrors hapticsEnabled — always kept in sync
   hapticFeedback: DEFAULTS.hapticsEnabled,
 
   setThemeId: (themeId) => {
     set({ themeId });
-    saveJSON(StorageKeys.PREFERENCES, { ...get(), themeId });
+    persist(get());
   },
 
   setHapticsEnabled: (hapticsEnabled) => {
     set({ hapticsEnabled, hapticFeedback: hapticsEnabled });
-    saveJSON(StorageKeys.PREFERENCES, { ...get(), hapticsEnabled });
+    persist(get());
   },
 
-  // Alias so settings UI and components can use either name
   setHapticFeedback: (v) => {
     set({ hapticsEnabled: v, hapticFeedback: v });
-    saveJSON(StorageKeys.PREFERENCES, { ...get(), hapticsEnabled: v });
+    persist(get());
   },
 
   setShowUsageCount: (showUsageCount) => {
     set({ showUsageCount });
-    saveJSON(StorageKeys.PREFERENCES, { ...get(), showUsageCount });
+    persist(get());
+  },
+
+  setCurrency: (currency) => {
+    set({ currency });
+    persist(get());
   },
 
   setOnboardingCompleted: (onboardingCompleted) => {
     set({ onboardingCompleted });
-    saveJSON(StorageKeys.PREFERENCES, { ...get(), onboardingCompleted });
+    persist(get());
   },
 
   hydrate: async () => {
-    const saved = await loadJSON(StorageKeys.PREFERENCES, DEFAULTS);
+    const saved = await loadJSON<Partial<typeof DEFAULTS>>(StorageKeys.PREFERENCES, DEFAULTS);
     const hapticsEnabled = saved.hapticsEnabled ?? DEFAULTS.hapticsEnabled;
+    // A theme that was removed from the registry must not brick the app
+    const savedTheme = saved.themeId ?? DEFAULTS.themeId;
+    const themeId =
+      THEME_MAP[savedTheme] || ['system', 'light', 'dark'].includes(savedTheme)
+        ? savedTheme
+        : DEFAULTS.themeId;
+    const currency = saved.currency && CURRENCIES[saved.currency]
+      ? saved.currency
+      : DEFAULTS.currency;
+
     set({
-      themeId: saved.themeId ?? DEFAULTS.themeId,
+      themeId,
       hapticsEnabled,
       hapticFeedback: hapticsEnabled,
       showUsageCount: saved.showUsageCount ?? DEFAULTS.showUsageCount,
+      currency,
       onboardingCompleted: saved.onboardingCompleted ?? DEFAULTS.onboardingCompleted,
     });
   },
 }));
+
+/** Convenience selector — the active currency, for screens that show money. */
+export function useCurrency(): CurrencyCode {
+  return usePreferencesStore((s) => s.currency);
+}

@@ -1,21 +1,18 @@
-import React from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ScrollView,
-} from 'react-native';
+import React, { useMemo } from 'react';
+import { StyleSheet, View, Text, ScrollView } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
 
 import { UtilityHeader } from '@/components/common/UtilityHeader';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useUtilityState } from '@/hooks/useUtilityState';
+import { usePreferencesStore } from '@/stores/preferencesStore';
+import { Card, FieldLabel, Segmented, NumericField, Notice, Pill } from '@/components/ui';
+import { formatCurrency, formatCurrencyCompact, currencySymbol, parseAmount } from '@/utils/format';
 import { spacing, radius, typography } from '@/theme';
 import type { EMIState } from '@/types';
+
+const ACCENT = '#C2902B';
 
 const DEFAULT_STATE: EMIState = {
   principal: '',
@@ -27,189 +24,231 @@ const DEFAULT_STATE: EMIState = {
   totalInterest: '',
 };
 
-function calculateEMI(principal: number, annualRate: number, tenureMonths: number) {
-  if (!principal || !annualRate || !tenureMonths) return null;
-  const r = annualRate / 12 / 100;
-  const emi = (principal * r * Math.pow(1 + r, tenureMonths)) / (Math.pow(1 + r, tenureMonths) - 1);
-  const total = emi * tenureMonths;
-  const interest = total - principal;
-  return { emi, total, interest };
+interface EMIResult {
+  emi: number;
+  total: number;
+  interest: number;
 }
 
-function formatINR(amount: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
+/**
+ * Standard reducing-balance EMI. A 0% loan is a legitimate input (the formula
+ * divides by zero there), so it gets its own branch instead of being rejected.
+ */
+function calculateEMI(principal: number, annualRate: number, tenureMonths: number): EMIResult | null {
+  if (!(principal > 0) || !(tenureMonths > 0) || annualRate < 0) return null;
+
+  if (annualRate === 0) {
+    const emi = principal / tenureMonths;
+    return { emi, total: principal, interest: 0 };
+  }
+
+  const r = annualRate / 12 / 100;
+  const factor = Math.pow(1 + r, tenureMonths);
+  const emi = (principal * r * factor) / (factor - 1);
+  if (!isFinite(emi)) return null;
+
+  const total = emi * tenureMonths;
+  return { emi, total, interest: total - principal };
 }
+
+const AMOUNT_PRESETS = [100000, 500000, 1000000, 2500000, 5000000];
+const RATE_PRESETS = [7, 8.5, 9, 10.5, 12];
+const TENURE_PRESETS = { years: [5, 10, 15, 20, 30], months: [6, 12, 18, 24, 36] };
 
 export default function EMICalculatorScreen() {
   const { colors } = useTheme();
-  const { state, setState, clearState } = useUtilityState<EMIState>(
-    'emi',
-    DEFAULT_STATE
+  const currency = usePreferencesStore((s) => s.currency);
+  const { state, setState, clearState } = useUtilityState<EMIState>('emi', DEFAULT_STATE);
+
+  const principal = parseAmount(state.principal);
+  const rate = parseAmount(state.rate);
+  const tenure = parseAmount(state.tenure);
+  const months = state.tenureType === 'years' ? tenure * 12 : tenure;
+
+  // Recomputed live — there is no "Calculate" button to forget to press
+  const result = useMemo(
+    () => calculateEMI(principal, rate, months),
+    [principal, rate, months],
   );
 
-  const handleCalculate = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const p = parseFloat(state.principal);
-    const r = parseFloat(state.rate);
-    const t = parseFloat(state.tenure);
-    const months = state.tenureType === 'years' ? t * 12 : t;
-    const result = calculateEMI(p, r, months);
-    if (result) {
-      setState((prev) => ({
-        ...prev,
-        emi: result.emi.toFixed(2),
-        totalAmount: result.total.toFixed(2),
-        totalInterest: result.interest.toFixed(2),
-      }));
-    }
-  };
+  const fmt = (n: number) => formatCurrency(n, currency, { decimals: 0 });
 
-  const hasResult = !!state.emi;
-  const principalRatio = hasResult
-    ? (parseFloat(state.principal) / parseFloat(state.totalAmount)) * 100
+  // Explain exactly which field is holding the calculation up
+  const validation = useMemo(() => {
+    if (!state.principal && !state.rate && !state.tenure) return null;
+    if (!(principal > 0)) return 'Enter a loan amount greater than zero.';
+    if (isNaN(rate) || rate < 0) return 'Enter an interest rate (use 0 for an interest-free loan).';
+    if (!(months > 0)) return 'Enter a tenure greater than zero.';
+    if (months > 600) return 'Tenure is capped at 50 years.';
+    return null;
+  }, [state.principal, state.rate, state.tenure, principal, rate, months]);
+
+  const principalRatio = result && result.total > 0
+    ? Math.min(100, Math.max(0, (principal / result.total) * 100))
     : 0;
 
+  const set = (patch: Partial<EMIState>) => setState((p) => ({ ...p, ...patch }));
+
   return (
-    <SafeAreaView
-      style={[styles.root, { backgroundColor: colors.bg }]}
-      edges={['bottom']}
-    >
+    <SafeAreaView style={[styles.root, { backgroundColor: colors.bg }]} edges={['bottom']}>
       <UtilityHeader
         title="EMI Calculator"
         utilityId="emi"
-        accentColor="#F59E0B"
+        accentColor={ACCENT}
+        subtitle={result ? `${months} monthly payments` : undefined}
         onClearData={clearState}
       />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Inputs */}
-        <Animated.View
-          entering={FadeInDown.delay(50).duration(300)}
-          style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        >
-          <InputField
-            label="Loan Amount (₹)"
-            value={state.principal}
-            onChangeText={(v) => setState((p) => ({ ...p, principal: v, emi: '', totalAmount: '', totalInterest: '' }))}
-            placeholder="e.g. 500000"
-            colors={colors}
-            accent="#F59E0B"
-          />
-          <InputField
-            label="Annual Interest Rate (%)"
-            value={state.rate}
-            onChangeText={(v) => setState((p) => ({ ...p, rate: v, emi: '' }))}
-            placeholder="e.g. 8.5"
-            colors={colors}
-            accent="#F59E0B"
-          />
-
-          <View>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>Tenure</Text>
-            <View style={styles.tenureRow}>
-              <TextInput
-                style={[styles.input, styles.tenureInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
-                value={state.tenure}
-                onChangeText={(v) => setState((p) => ({ ...p, tenure: v, emi: '' }))}
-                placeholder="e.g. 5"
-                placeholderTextColor={colors.textTertiary}
-                keyboardType="decimal-pad"
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/* ── Inputs ─────────────────────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(40).duration(280)}>
+          <Card>
+            <View>
+              <FieldLabel>Loan amount</FieldLabel>
+              <NumericField
+                value={state.principal}
+                onChangeText={(v) => set({ principal: v })}
+                placeholder="0"
+                prefix={currencySymbol(currency)}
+                accent={ACCENT}
+                size="lg"
               />
-              <View style={[styles.tenureToggle, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                {(['years', 'months'] as const).map((type) => (
-                  <Pressable
-                    key={type}
-                    onPress={() => setState((p) => ({ ...p, tenureType: type, emi: '' }))}
-                    style={[
-                      styles.tenureOption,
-                      state.tenureType === type && { backgroundColor: '#F59E0B' },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.tenureOptionText,
-                        { color: state.tenureType === type ? '#000' : colors.textSecondary },
-                      ]}
-                    >
-                      {type.charAt(0).toUpperCase() + type.slice(1)}
-                    </Text>
-                  </Pressable>
+              <View style={styles.presetRow}>
+                {AMOUNT_PRESETS.map((amt) => (
+                  <Pill
+                    key={amt}
+                    label={formatCurrencyCompact(amt, currency)}
+                    active={parseAmount(state.principal) === amt}
+                    accent={ACCENT}
+                    onPress={() => set({ principal: String(amt) })}
+                  />
                 ))}
               </View>
             </View>
-          </View>
 
-          <Pressable
-            onPress={handleCalculate}
-            style={[styles.calcBtn, { backgroundColor: '#F59E0B' }]}
-          >
-            <Text style={styles.calcBtnText}>Calculate EMI</Text>
-          </Pressable>
+            <View>
+              <FieldLabel>Annual interest rate</FieldLabel>
+              <NumericField
+                value={state.rate}
+                onChangeText={(v) => set({ rate: v })}
+                placeholder="0"
+                suffix="%"
+                accent={ACCENT}
+              />
+              <View style={styles.presetRow}>
+                {RATE_PRESETS.map((r) => (
+                  <Pill
+                    key={r}
+                    label={`${r}%`}
+                    active={parseAmount(state.rate) === r}
+                    accent={ACCENT}
+                    onPress={() => set({ rate: String(r) })}
+                  />
+                ))}
+              </View>
+            </View>
+
+            <View>
+              <FieldLabel>Tenure</FieldLabel>
+              <View style={styles.tenureRow}>
+                <NumericField
+                  value={state.tenure}
+                  onChangeText={(v) => set({ tenure: v })}
+                  placeholder="0"
+                  accent={ACCENT}
+                  style={styles.tenureInput}
+                />
+                <Segmented
+                  options={[
+                    { value: 'years', label: 'Years' },
+                    { value: 'months', label: 'Months' },
+                  ]}
+                  value={state.tenureType}
+                  onChange={(v) => set({ tenureType: v })}
+                  accent={ACCENT}
+                  style={styles.tenureToggle}
+                />
+              </View>
+              <View style={styles.presetRow}>
+                {TENURE_PRESETS[state.tenureType].map((t) => (
+                  <Pill
+                    key={t}
+                    label={`${t}`}
+                    active={parseAmount(state.tenure) === t}
+                    accent={ACCENT}
+                    onPress={() => set({ tenure: String(t) })}
+                  />
+                ))}
+              </View>
+            </View>
+
+            {validation && <Notice text={validation} tone="warn" />}
+          </Card>
         </Animated.View>
 
-        {/* Result */}
-        {hasResult && (
-          <Animated.View entering={FadeInDown.delay(50).duration(400)}>
-            {/* Main EMI */}
-            <View style={[styles.emiDisplay, { backgroundColor: '#F59E0B15', borderColor: '#F59E0B40' }]}>
-              <Text style={[styles.emiLabel, { color: '#F59E0B' }]}>Monthly EMI</Text>
-              <Text style={[styles.emiAmount, { color: colors.text }]}>
-                {formatINR(parseFloat(state.emi))}
+        {/* ── Result ─────────────────────────────────────────────────────── */}
+        {result && (
+          <Animated.View entering={FadeInDown.duration(320)} style={styles.resultBlock}>
+            <Card tone="accent" accent={ACCENT} style={styles.emiCard}>
+              <Text style={[styles.emiLabel, { color: ACCENT }]}>MONTHLY EMI</Text>
+              <Text
+                style={[styles.emiAmount, { color: colors.text }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.5}
+              >
+                {fmt(result.emi)}
               </Text>
-            </View>
+              <Text style={[styles.emiSub, { color: colors.textSecondary }]}>
+                for {months} month{months === 1 ? '' : 's'}
+                {state.tenureType === 'years' && tenure ? ` (${tenure} years)` : ''}
+              </Text>
+            </Card>
 
-            {/* Breakdown */}
-            <View style={[styles.breakdownCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={styles.breakdownRow}>
-                <View style={[styles.breakdownDot, { backgroundColor: '#6366F1' }]} />
-                <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>
-                  Principal
-                </Text>
-                <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                  {formatINR(parseFloat(state.principal))}
-                </Text>
-              </View>
-              <View style={styles.breakdownRow}>
-                <View style={[styles.breakdownDot, { backgroundColor: '#F43F5E' }]} />
-                <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>
-                  Total Interest
-                </Text>
-                <Text style={[styles.breakdownValue, { color: '#F43F5E' }]}>
-                  {formatINR(parseFloat(state.totalInterest))}
-                </Text>
-              </View>
+            <Card>
+              <BreakdownRow
+                dot="#3C5A7D"
+                label="Principal"
+                value={fmt(principal)}
+                colors={colors}
+              />
+              <BreakdownRow
+                dot="#A6392B"
+                label="Total interest"
+                value={fmt(result.interest)}
+                valueColor="#A6392B"
+                colors={colors}
+              />
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <View style={styles.breakdownRow}>
-                <View style={[styles.breakdownDot, { backgroundColor: '#F59E0B' }]} />
-                <Text style={[styles.breakdownLabel, { color: colors.text, fontWeight: '600' }]}>
-                  Total Amount
+              <BreakdownRow
+                dot={ACCENT}
+                label="Total payable"
+                value={fmt(result.total)}
+                bold
+                colors={colors}
+              />
+
+              {/* Principal vs interest split */}
+              <View style={[styles.ratioBar, { backgroundColor: colors.muted }]}>
+                <View style={[styles.ratioFill, { backgroundColor: '#3C5A7D', width: `${principalRatio}%` }]} />
+                <View style={[styles.ratioFill, { backgroundColor: '#A6392B', flex: 1 }]} />
+              </View>
+              <View style={styles.ratioLegend}>
+                <Text style={[styles.legendTxt, { color: '#3C5A7D' }]}>
+                  Principal {principalRatio.toFixed(1)}%
                 </Text>
-                <Text style={[styles.breakdownValue, { color: colors.text, fontWeight: '700' }]}>
-                  {formatINR(parseFloat(state.totalAmount))}
+                <Text style={[styles.legendTxt, { color: '#A6392B' }]}>
+                  Interest {(100 - principalRatio).toFixed(1)}%
                 </Text>
               </View>
-            </View>
 
-            {/* Visual bar */}
-            <View style={[styles.ratioBar, { backgroundColor: colors.muted }]}>
-              <View style={[styles.ratioFill, { backgroundColor: '#6366F1', width: `${principalRatio}%` }]} />
-              <View style={[styles.ratioFill, { backgroundColor: '#F43F5E', flex: 1 }]} />
-            </View>
-            <View style={styles.ratioLegend}>
-              <Text style={{ color: '#6366F1', fontSize: 12, fontWeight: '600' }}>
-                Principal {principalRatio.toFixed(1)}%
-              </Text>
-              <Text style={{ color: '#F43F5E', fontSize: 12, fontWeight: '600' }}>
-                Interest {(100 - principalRatio).toFixed(1)}%
-              </Text>
-            </View>
+              {result.interest > principal && (
+                <Notice
+                  tone="warn"
+                  text={`Over the full term you pay ${(result.interest / principal).toFixed(1)}× the loan amount in interest.`}
+                />
+              )}
+            </Card>
           </Animated.View>
         )}
       </ScrollView>
@@ -217,110 +256,68 @@ export default function EMICalculatorScreen() {
   );
 }
 
-function InputField({ label, value, onChangeText, placeholder, colors, accent }: any) {
+function BreakdownRow({
+  dot, label, value, valueColor, bold, colors,
+}: {
+  dot: string;
+  label: string;
+  value: string;
+  valueColor?: string;
+  bold?: boolean;
+  colors: any;
+}) {
   return (
-    <View>
-      <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
-      <TextInput
-        style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textTertiary}
-        keyboardType="decimal-pad"
-      />
+    <View style={styles.breakdownRow}>
+      <View style={[styles.breakdownDot, { backgroundColor: dot }]} />
+      <Text
+        style={[
+          styles.breakdownLabel,
+          { color: bold ? colors.text : colors.textSecondary, fontWeight: bold ? '700' : '400' },
+        ]}
+      >
+        {label}
+      </Text>
+      <Text
+        style={[
+          styles.breakdownValue,
+          { color: valueColor ?? colors.text, fontWeight: bold ? '800' : '600' },
+        ]}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  content: { padding: spacing.base, gap: spacing.base, paddingBottom: 40 },
-  card: {
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    padding: spacing.base,
-    gap: spacing.base,
-  },
-  label: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-    marginBottom: spacing.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  input: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold,
-  },
+  content: { padding: spacing.base, gap: spacing.base, paddingBottom: 48 },
+
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   tenureRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
   tenureInput: { flex: 1 },
-  tenureToggle: {
-    flexDirection: 'row',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    overflow: 'hidden',
-    padding: 3,
-    gap: 3,
-  },
-  tenureOption: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
-  },
-  tenureOptionText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
-  calcBtn: {
-    borderRadius: radius.xl,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-  },
-  calcBtnText: { fontSize: typography.sizes.base, fontWeight: typography.weights.bold, color: '#000' },
-  emiDisplay: {
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    padding: spacing.xl,
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginBottom: spacing.base,
-  },
-  emiLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  emiAmount: {
-    fontSize: typography.sizes['3xl'],
-    fontWeight: typography.weights.extrabold,
-    letterSpacing: -1,
-  },
-  breakdownCard: {
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    padding: spacing.base,
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  breakdownRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
+  tenureToggle: { width: 168 },
+
+  resultBlock: { gap: spacing.base },
+  emiCard: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xl },
+  emiLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
+  emiAmount: { fontSize: 40, fontWeight: '800', letterSpacing: -1.2 },
+  emiSub: { fontSize: typography.sizes.sm },
+
+  breakdownRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   breakdownDot: { width: 8, height: 8, borderRadius: 4 },
   breakdownLabel: { flex: 1, fontSize: typography.sizes.base },
-  breakdownValue: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
+  breakdownValue: { fontSize: typography.sizes.base, fontVariant: ['tabular-nums'] },
   divider: { height: StyleSheet.hairlineWidth },
+
   ratioBar: {
-    height: 8,
-    borderRadius: 4,
+    height: 10,
+    borderRadius: radius.sm,
     flexDirection: 'row',
     overflow: 'hidden',
-    marginBottom: spacing.xs,
+    marginTop: spacing.xs,
   },
   ratioFill: { height: '100%' },
   ratioLegend: { flexDirection: 'row', justifyContent: 'space-between' },
+  legendTxt: { fontSize: 12, fontWeight: '700' },
 });

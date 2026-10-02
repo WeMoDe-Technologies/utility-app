@@ -23,7 +23,8 @@ export interface UtilityDefinition {
 
 // ─── State Management Types ───────────────────────────────────────────────
 export interface RecentEntry {
-  utilityId: string;
+  /** Registry id of the utility (see UTILITY_REGISTRY). */
+  id: string;
   lastUsedAt: number;
   useCount: number;
 }

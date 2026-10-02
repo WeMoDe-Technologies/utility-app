@@ -1,184 +1,187 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, Text, View, Pressable, StatusBar, Alert } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSequence,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet, Text, View, Pressable, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 
 import { useTheme } from '@/theme/ThemeProvider';
 import { useFavouritesStore } from '@/stores/favouritesStore';
-import { usePreferencesStore } from '@/stores/preferencesStore';
-import { UTILITY_REGISTRY } from '@/registry';
+import { useHaptic, toast, onColour } from '@/components/ui';
+import { getUtilityById } from '@/registry';
 import { UtilityIcon } from './UtilityIcon';
-import { spacing, typography, radius } from '@/theme';
+import { spacing, typography, radius, border } from '@/theme';
 
 interface UtilityHeaderProps {
   title: string;
+  /** Registry id — also the key this tool's state is stored under. */
   utilityId: string;
   accentColor: string;
+  /** Optional one-line status shown under the title (mode, last update…). */
+  subtitle?: string;
   onClearData?: () => void;
+  /** Extra action rendered to the left of the clear/favourite buttons. */
+  rightAction?: React.ReactNode;
 }
 
-export function UtilityHeader({ title, utilityId, accentColor, onClearData }: UtilityHeaderProps) {
-  const { colors, isDark } = useTheme();
+/**
+ * The nameplate at the top of every tool: a solid bar in the tool's ink, with
+ * the title stencilled across it and a heavy rule closing it off. It reads as
+ * the labelled fascia of a machine rather than a floating app bar.
+ */
+export function UtilityHeader({
+  title,
+  utilityId,
+  accentColor,
+  subtitle,
+  onClearData,
+  rightAction,
+}: UtilityHeaderProps) {
+  const { colors } = useTheme();
   const { top } = useSafeAreaInsets();
-  const { isFavourite, toggleFavourite } = useFavouritesStore();
-  const { hapticFeedback } = usePreferencesStore();
-  const favourite = isFavourite(utilityId);
+  const favourite = useFavouritesStore((s) => s.favourites.includes(utilityId));
+  const toggleFavourite = useFavouritesStore((s) => s.toggleFavourite);
+  const haptic = useHaptic();
 
-  // Look up the utility's icon so the header carries its identity
-  const utility = UTILITY_REGISTRY.find((u) => u.id === utilityId);
+  const utility = getUtilityById(utilityId);
+  const fg = onColour(accentColor);
 
-  const starScale = useSharedValue(1);
-  const starStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: starScale.value }],
-  }));
-
-  const handleBack = () => {
-    if (hapticFeedback) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.back();
-  };
+  const handleBack = useCallback(() => {
+    haptic('light');
+    // A deep link can land here with nothing to go back to
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  }, [haptic]);
 
   const handleFav = useCallback(() => {
-    if (hapticFeedback) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // Pop animation on toggle
-    starScale.value = withSequence(
-      withTiming(0.7, { duration: 70 }),
-      withSpring(1.25, { damping: 7, stiffness: 300 }),
-      withSpring(1, { damping: 12 })
-    );
+    haptic('medium');
     toggleFavourite(utilityId);
-  }, [utilityId, hapticFeedback]);
+    toast(favourite ? 'Removed from favourites' : 'Added to favourites', 'info');
+  }, [utilityId, favourite, haptic, toggleFavourite]);
 
-  const handleClear = () => {
-    if (hapticFeedback) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert('Clear Data', 'This will reset all saved state for this utility.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Clear', style: 'destructive', onPress: onClearData },
-    ]);
-  };
+  const handleClear = useCallback(() => {
+    haptic('warning');
+    Alert.alert(
+      `Reset ${title}?`,
+      'This clears everything saved for this tool. It cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            onClearData?.();
+            toast('Tool data cleared', 'info');
+          },
+        },
+      ],
+    );
+  }, [title, onClearData, haptic]);
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.surface,
-          paddingTop: top + spacing.sm,
-          borderBottomColor: colors.border,
-          shadowColor: isDark ? accentColor : '#000',
-        },
-      ]}
-    >
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+    <View style={{ backgroundColor: accentColor, paddingTop: top }}>
+      {/* The fascia is the tool's own ink, so the status bar has to contrast
+          with *that*, not with the theme — a dark accent under a light theme
+          would otherwise render dark-on-dark. */}
+      <StatusBar style={fg === '#1E1C19' ? 'dark' : 'light'} />
+      <View style={styles.bar}>
+        <HeaderKey
+          icon="arrow-back"
+          label="Go back"
+          fg={fg}
+          onPress={handleBack}
+        />
 
-      {/* Accent gradient wash — subtle identity tint across the header */}
-      <LinearGradient
-        colors={[accentColor + (isDark ? '20' : '12'), accentColor + '00']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0.85, y: 1 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
-
-      {/* Back */}
-      <Pressable
-        onPress={handleBack}
-        hitSlop={10}
-        style={({ pressed }) => [
-          styles.iconBtn,
-          {
-            backgroundColor: pressed ? colors.muted : colors.card,
-            borderColor: colors.border,
-          },
-        ]}
-      >
-        <Ionicons name="chevron-back" size={20} color={colors.text} />
-      </Pressable>
-
-      {/* Icon chip + Title */}
-      <View style={styles.titleContainer}>
-        <View style={[styles.iconChip, { backgroundColor: accentColor + '1E' }]}>
-          {utility ? (
-            <UtilityIcon utility={utility} size={14} color={accentColor} />
-          ) : (
-            <View style={[styles.titleDot, { backgroundColor: accentColor }]} />
-          )}
+        <View style={styles.titleContainer}>
+          <View style={[styles.iconChip, { borderColor: fg }]}>
+            {utility ? (
+              <UtilityIcon utility={utility} size={13} color={fg} />
+            ) : (
+              <View style={[styles.titleDot, { backgroundColor: fg }]} />
+            )}
+          </View>
+          <View style={styles.titleCol}>
+            <Text style={[styles.title, { color: fg }]} numberOfLines={1}>
+              {title.toUpperCase()}
+            </Text>
+            {subtitle ? (
+              <Text style={[styles.subtitle, { color: fg }]} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
         </View>
-        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-          {title}
-        </Text>
+
+        <View style={styles.rightActions}>
+          {rightAction}
+          {onClearData && (
+            <HeaderKey icon="trash-outline" label="Reset this tool" fg={fg} onPress={handleClear} />
+          )}
+          <HeaderKey
+            icon={favourite ? 'star' : 'star-outline'}
+            label={favourite ? 'Remove from favourites' : 'Add to favourites'}
+            fg={fg}
+            active={favourite}
+            onPress={handleFav}
+          />
+        </View>
       </View>
 
-      {/* Right actions */}
-      <View style={styles.rightActions}>
-        {onClearData && (
-          <Pressable
-            onPress={handleClear}
-            hitSlop={8}
-            style={({ pressed }) => [
-              styles.iconBtn,
-              {
-                backgroundColor: pressed ? colors.muted : colors.card,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <Ionicons name="trash-outline" size={16} color={colors.textSecondary} />
-          </Pressable>
-        )}
-        <Pressable
-          onPress={handleFav}
-          hitSlop={8}
-          style={({ pressed }) => [
-            styles.iconBtn,
-            {
-              backgroundColor: favourite ? '#F59E0B1A' : pressed ? colors.muted : colors.card,
-              borderColor: favourite ? '#F59E0B40' : colors.border,
-            },
-          ]}
-        >
-          <Animated.View style={starStyle}>
-            <Ionicons
-              name={favourite ? 'star' : 'star-outline'}
-              size={16}
-              color={favourite ? '#F59E0B' : colors.textSecondary}
-            />
-          </Animated.View>
-        </Pressable>
-      </View>
+      {/* Heavy rule closes the fascia off from the work area */}
+      <View style={[styles.closingRule, { backgroundColor: colors.border }]} />
     </View>
   );
 }
 
+/**
+ * A punched key on the nameplate, outlined in the fascia's own foreground.
+ * Exported so a screen's `rightAction` matches the built-in keys instead of
+ * dropping a card-coloured button onto the coloured bar.
+ */
+export function HeaderKey({
+  icon,
+  label,
+  fg,
+  onPress,
+  active,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  /** Foreground of the fascia this key sits on — use `onColour(accent)`. */
+  fg: string;
+  onPress: () => void;
+  active?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [
+        styles.key,
+        { borderColor: fg, backgroundColor: active || pressed ? fg + '2E' : 'transparent' },
+      ]}
+    >
+      <Ionicons name={icon} size={16} color={fg} />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
+  bar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.base,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: spacing.sm,
-    overflow: 'hidden',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-    zIndex: 10,
   },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+  key: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    borderWidth: border.base,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -191,20 +194,29 @@ const styles = StyleSheet.create({
   iconChip: {
     width: 26,
     height: 26,
-    borderRadius: 8,
+    borderRadius: radius.sm,
+    borderWidth: border.base,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  titleDot: { width: 8, height: 8, borderRadius: 4 },
-  title: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    letterSpacing: -0.3,
-    flexShrink: 1,
-  },
+  titleDot: { width: 8, height: 8 },
   rightActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs + 2,
   },
+  titleCol: { flex: 1 },
+  title: {
+    fontSize: typography.sizes.base,
+    fontWeight: typography.weights.extrabold,
+    letterSpacing: typography.tracking.label,
+  },
+  subtitle: {
+    fontSize: 10,
+    fontWeight: typography.weights.bold,
+    letterSpacing: 0.3,
+    opacity: 0.75,
+    marginTop: 1,
+  },
+  closingRule: { height: border.thick },
 });

@@ -12,7 +12,7 @@ export const CARD_SIZE =
   (width - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
 
 // App metadata
-export const APP_NAME = 'UtilityKit';
+export const APP_NAME = 'Kit';
 export const APP_VERSION = '1.0.0';
 export const APP_BUILD = '1';
 

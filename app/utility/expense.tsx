@@ -10,8 +10,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  FlatList,
-  TouchableOpacity,
+  Alert,
 } from 'react-native';
 import Animated, {
   FadeInDown,
@@ -23,24 +22,26 @@ import Animated, {
 import Svg, { Circle, Path, G, Text as SvgText } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 
 import { UtilityHeader } from '@/components/common/UtilityHeader';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useUtilityState } from '@/hooks/useUtilityState';
-import { spacing, radius, typography } from '@/theme';
+import { usePreferencesStore } from '@/stores/preferencesStore';
+import { useHaptic, toast, Notice, PressablePlate, onColour } from '@/components/ui';
+import { formatCurrency, currencySymbol, type CurrencyCode } from '@/utils/format';
+import { spacing, radius, typography, border, plate } from '@/theme';
 import type { ExpenseState, Expense } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const ACCENT = '#6366F1';
+const ACCENT = '#3C5A7D';
 
 const CATEGORIES = [
-  { id: 'transport', label: 'Transport', icon: '🚗', color: '#F97316' },
-  { id: 'food',      label: 'Food',      icon: '☕', color: '#EC4899' },
-  { id: 'shopping',  label: 'Shopping',  icon: '🛍️', color: '#3B82F6' },
-  { id: 'bills',     label: 'Bills',     icon: '📄', color: '#8B5CF6' },
-  { id: 'health',    label: 'Health',    icon: '💊', color: '#10B981' },
-  { id: 'other',     label: 'Other',     icon: '📦', color: '#64748B' },
+  { id: 'transport', label: 'Transport', icon: '🚗', color: '#B4441C' },
+  { id: 'food',      label: 'Food',      icon: '☕', color: '#7A3246' },
+  { id: 'shopping',  label: 'Shopping',  icon: '🛍️', color: '#3C5A7D' },
+  { id: 'bills',     label: 'Bills',     icon: '📄', color: '#6B4A6E' },
+  { id: 'health',    label: 'Health',    icon: '💊', color: '#4C6B3C' },
+  { id: 'other',     label: 'Other',     icon: '📦', color: '#6B655C' },
 ] as const;
 
 type CategoryId = typeof CATEGORIES[number]['id'];
@@ -199,10 +200,12 @@ interface AddModalProps {
   onClose: () => void;
   onSave: (e: Omit<Expense, 'id' | 'date'>) => void;
   colors: any;
+  currency: CurrencyCode;
   initialIsIncome?: boolean;
 }
 
-function AddExpenseModal({ visible, onClose, onSave, colors, initialIsIncome = false }: AddModalProps) {
+function AddExpenseModal({ visible, onClose, onSave, colors, currency, initialIsIncome = false }: AddModalProps) {
+  const haptic = useHaptic();
   const [amount,   setAmount]   = useState('');
   const [note,     setNote]     = useState('');
   const [category, setCategory] = useState<CategoryId>('food');
@@ -214,10 +217,16 @@ function AddExpenseModal({ visible, onClose, onSave, colors, initialIsIncome = f
     if (visible) setIsIncome(initialIsIncome);
   }, [visible, initialIsIncome]);
 
+  const invalid = amount !== '' && !(parseFloat(amount) > 0);
+
   const handleSave = () => {
     const n = parseFloat(amount);
-    if (!n || n <= 0) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (!(n > 0)) {
+      // The button used to do nothing at all with an empty/zero amount
+      haptic('warning');
+      return;
+    }
+    haptic('success');
     onSave({ amount: n, note: note.trim(), category, isIncome });
     reset();
     onClose();
@@ -255,8 +264,8 @@ function AddExpenseModal({ visible, onClose, onSave, colors, initialIsIncome = f
                 return (
                   <Pressable
                     key={t}
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsIncome(t === 'Income'); }}
-                    style={[styles.typeTab, active && { backgroundColor: isIncome ? '#10B981' : ACCENT }]}
+                    onPress={() => { haptic('select'); setIsIncome(t === 'Income'); }}
+                    style={[styles.typeTab, active && { backgroundColor: isIncome ? '#4C6B3C' : ACCENT }]}
                   >
                     <Text style={[styles.typeTabTxt, { color: active ? '#fff' : colors.textSecondary }]}>{t}</Text>
                   </Pressable>
@@ -266,7 +275,9 @@ function AddExpenseModal({ visible, onClose, onSave, colors, initialIsIncome = f
 
             {/* Amount */}
             <View style={[styles.amountRow, { borderColor: colors.border }]}>
-              <Text style={[styles.currencySymbol, { color: colors.textSecondary }]}>$</Text>
+              <Text style={[styles.currencySymbol, { color: colors.textSecondary }]}>
+                {currencySymbol(currency)}
+              </Text>
               <TextInput
                 style={[styles.amountInput, { color: colors.text }]}
                 placeholder="0.00"
@@ -295,7 +306,7 @@ function AddExpenseModal({ visible, onClose, onSave, colors, initialIsIncome = f
                   return (
                     <Pressable
                       key={c.id}
-                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCategory(c.id); }}
+                      onPress={() => { haptic('select'); setCategory(c.id); }}
                       style={[
                         styles.catChip,
                         { backgroundColor: colors.surface, borderColor: active ? c.color : colors.border },
@@ -310,10 +321,18 @@ function AddExpenseModal({ visible, onClose, onSave, colors, initialIsIncome = f
               </View>
             )}
 
+            {invalid && <Notice tone="warn" text="Enter an amount greater than zero." />}
+
             {/* Save */}
             <Pressable
               onPress={handleSave}
-              style={[styles.saveBtn, { backgroundColor: isIncome ? '#10B981' : ACCENT }]}
+              disabled={!(parseFloat(amount) > 0)}
+              accessibilityRole="button"
+              style={[
+                styles.saveBtn,
+                { backgroundColor: isIncome ? '#4C6B3C' : ACCENT },
+                !(parseFloat(amount) > 0) && { opacity: 0.4 },
+              ]}
             >
               <Text style={styles.saveBtnTxt}>Save</Text>
             </Pressable>
@@ -327,24 +346,41 @@ function AddExpenseModal({ visible, onClose, onSave, colors, initialIsIncome = f
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function ExpenseScreen() {
   const { colors } = useTheme();
+  const currency = usePreferencesStore((s) => s.currency) as CurrencyCode;
+  const haptic = useHaptic();
   const { state, setState, clearState } = useUtilityState<ExpenseState>('expense', DEFAULT_STATE);
   const [period,     setPeriod]     = useState<Period>('month');
   const [showModal,  setShowModal]  = useState(false);
   const [activeTab,  setActiveTab]  = useState<'spending' | 'income'>('spending');
 
   // ── Filter expenses by period ─────────────────────────────────────────────
-  const filteredExpenses = useMemo(() => {
-    const now  = Date.now();
-    const cutoffs: Record<Period, number> = {
-      today: now - 86400000,
-      week:  now - 7 * 86400000,
-      month: now - 30 * 86400000,
-      year:  now - 365 * 86400000,
-    };
-    return state.expenses.filter(
-      (e) => e.date >= cutoffs[period] && (state.includeBills || e.category !== 'bills')
-    );
-  }, [state.expenses, period, state.includeBills]);
+  // Calendar periods, not rolling windows: "This Month" used to mean "the last
+  // 30 days", so on the 3rd of the month it still included most of the previous
+  // one — and the total never matched what the label promised.
+  const periodStart = useMemo(() => {
+    const now = new Date();
+    switch (period) {
+      case 'today':
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      case 'week': {
+        // Weeks start on Monday
+        const day = (now.getDay() + 6) % 7;
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate() - day).getTime();
+      }
+      case 'month':
+        return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      case 'year':
+        return new Date(now.getFullYear(), 0, 1).getTime();
+    }
+  }, [period]);
+
+  const filteredExpenses = useMemo(
+    () =>
+      state.expenses.filter(
+        (e) => e.date >= periodStart && (state.includeBills || e.category !== 'bills'),
+      ),
+    [state.expenses, periodStart, state.includeBills],
+  );
 
   // ── Aggregations ──────────────────────────────────────────────────────────
   const { totalSpend, totalIncome, slices, chartTotal } = useMemo(() => {
@@ -352,7 +388,9 @@ export default function ExpenseScreen() {
     const income = filteredExpenses.filter((e) => e.isIncome);
 
     const totalSpend  = spend.reduce((s, e) => s + e.amount, 0);
-    const totalIncome = income.reduce((s, e) => s + e.amount, 0) + state.income;
+    // `state.income` is a legacy manual baseline with no UI to set it; counting
+    // it would make the totals disagree with the transaction list.
+    const totalIncome = income.reduce((s, e) => s + e.amount, 0);
 
     const byCategory: Record<string, number> = {};
     spend.forEach((e) => {
@@ -364,15 +402,9 @@ export default function ExpenseScreen() {
       .map((c) => ({ id: c.id, value: byCategory[c.id], color: c.color, icon: c.icon }))
       .sort((a, b) => b.value - a.value);
 
-    const incomeSlice = totalIncome > 0
-      ? [{ id: 'income', value: totalIncome, color: '#10B981', icon: '💰' }]
-      : [];
-
-    const slices = [...spendSlices, ...incomeSlice];
-    const chartTotal = totalSpend + totalIncome;
-
-    return { totalSpend, totalIncome, slices, chartTotal };
-  }, [filteredExpenses, state.income]);
+    // Spend only — the ring is a breakdown of the number in its centre
+    return { totalSpend, totalIncome, slices: spendSlices, chartTotal: totalSpend };
+  }, [filteredExpenses]);
 
   const netBalance = totalIncome - totalSpend;
 
@@ -381,20 +413,33 @@ export default function ExpenseScreen() {
     setState((p) => ({
       ...p,
       expenses: [
-        { ...entry, id: Date.now().toString(), date: Date.now() },
+        { ...entry, id: `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`, date: Date.now() },
         ...p.expenses,
       ],
     }));
   };
 
   // ── Delete transaction ────────────────────────────────────────────────────
-  const handleDelete = (id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setState((p) => ({ ...p, expenses: p.expenses.filter((e) => e.id !== id) }));
+  const handleDelete = (entry: Expense) => {
+    haptic('warning');
+    Alert.alert(
+      'Delete this transaction?',
+      `${entry.isIncome ? 'Income' : 'Expense'} of ${fmt(entry.amount)}${entry.note ? ` — ${entry.note}` : ''}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setState((p) => ({ ...p, expenses: p.expenses.filter((e) => e.id !== entry.id) }));
+            toast('Transaction deleted', 'info');
+          },
+        },
+      ],
+    );
   };
 
-  const fmt = (n: number) =>
-    n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 });
+  const fmt = (n: number) => formatCurrency(n, currency, { trimWholeNumbers: true });
 
   const displayExpenses = filteredExpenses
     .filter((e) => activeTab === 'income' ? e.isIncome : !e.isIncome)
@@ -419,7 +464,7 @@ export default function ExpenseScreen() {
             {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
               <Pressable
                 key={p}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPeriod(p); }}
+                onPress={() => { haptic('select'); setPeriod(p); }}
                 style={[styles.periodTab, period === p && { backgroundColor: colors.card }]}
               >
                 <Text style={[
@@ -454,7 +499,9 @@ export default function ExpenseScreen() {
             <DonutChart slices={slices} total={chartTotal} colors={colors} />
             {/* Center label */}
             <View style={styles.donutCenter} pointerEvents="none">
-              <Text style={[styles.donutLabel, { color: colors.textSecondary }]}>Total spend</Text>
+              <Text style={[styles.donutLabel, { color: colors.textSecondary }]}>
+                {PERIOD_LABELS[period]}
+              </Text>
               <Text style={[styles.donutAmount, { color: colors.text }]}>{fmt(totalSpend)}</Text>
             </View>
           </View>
@@ -463,9 +510,9 @@ export default function ExpenseScreen() {
         {/* ── Stat cards ───────────────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.delay(160).duration(280)}>
           <View style={styles.statsRow}>
-            <StatCard label="Income"        value={fmt(totalIncome)} icon="💰" color="#6366F1" colors={colors} />
-            <StatCard label="Total Spending" value={fmt(totalSpend)}  icon="💳" color="#EC4899" colors={colors} />
-            <StatCard label="Net Balance"   value={fmt(netBalance)}  icon="👛" color={netBalance >= 0 ? '#10B981' : '#EF4444'} colors={colors} />
+            <StatCard label="Income"        value={fmt(totalIncome)} icon="💰" color="#3C5A7D" colors={colors} />
+            <StatCard label="Total Spending" value={fmt(totalSpend)}  icon="💳" color="#7A3246" colors={colors} />
+            <StatCard label="Net Balance"   value={fmt(netBalance)}  icon="👛" color={netBalance >= 0 ? '#4C6B3C' : '#A6392B'} colors={colors} />
           </View>
         </Animated.View>
 
@@ -505,10 +552,11 @@ export default function ExpenseScreen() {
                 return (
                   <Pressable
                     key={e.id}
-                    onLongPress={() => handleDelete(e.id)}
+                    onLongPress={() => handleDelete(e)}
+                    delayLongPress={400}
                     style={[styles.txRow, { borderColor: colors.border }]}
                   >
-                    <View style={[styles.txIconBubble, { backgroundColor: (cat?.color ?? '#64748B') + '20' }]}>
+                    <View style={[styles.txIconBubble, { backgroundColor: (cat?.color ?? '#6B655C') + '20' }]}>
                       <Text style={styles.txIcon}>{e.isIncome ? '💰' : (cat?.icon ?? '📦')}</Text>
                     </View>
                     <View style={styles.txInfo}>
@@ -521,7 +569,7 @@ export default function ExpenseScreen() {
                     </View>
                     <Text style={[
                       styles.txAmount,
-                      { color: e.isIncome ? '#10B981' : colors.text },
+                      { color: e.isIncome ? '#4C6B3C' : colors.text },
                     ]}>
                       {e.isIncome ? '+' : '-'}{fmt(e.amount)}
                     </Text>
@@ -537,16 +585,20 @@ export default function ExpenseScreen() {
 
       {/* ── FAB ──────────────────────────────────────────────────────────────── */}
       <Animated.View
-        entering={FadeIn.delay(300).duration(300)}
+        entering={FadeIn.delay(250).duration(300)}
+        style={styles.fabWrapper}
+        pointerEvents="box-none"
       >
-      <View style={styles.fabWrapper} pointerEvents="box-none">
-        <Pressable
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowModal(true); }}
-          style={[styles.fab, { backgroundColor: ACCENT }]}
+        <PressablePlate
+          onPress={() => { haptic('medium'); setShowModal(true); }}
+          accessibilityLabel="Add a transaction"
+          offset={plate.high}
+          radius={radius.md}
+          fill={ACCENT}
+          contentStyle={styles.fab}
         >
-          <Ionicons name="add" size={28} color="#fff" />
-        </Pressable>
-      </View>
+          <Ionicons name="add" size={28} color={onColour(ACCENT)} />
+        </PressablePlate>
       </Animated.View>
 
       {/* ── Add Expense Modal ─────────────────────────────────────────────────── */}
@@ -555,6 +607,7 @@ export default function ExpenseScreen() {
         onClose={() => setShowModal(false)}
         onSave={handleAdd}
         colors={colors}
+        currency={currency}
         initialIsIncome={activeTab === 'income'}
       />
     </SafeAreaView>
@@ -570,7 +623,7 @@ const styles = StyleSheet.create({
   periodTabs: {
     flexDirection: 'row',
     borderRadius: radius.xl,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: 3,
   },
   periodTab: {
@@ -588,7 +641,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     borderRadius: radius.xl,
-    borderWidth: 1,
+    borderWidth: border.base,
   },
   billsLabel: { flex: 1, fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
 
@@ -607,7 +660,7 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     borderRadius: radius.xl,
-    borderWidth: 1,
+    borderWidth: border.base,
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
     alignItems: 'center',
@@ -620,7 +673,7 @@ const styles = StyleSheet.create({
   // Transactions
   txSection: {
     borderRadius: radius.xl,
-    borderWidth: 1,
+    borderWidth: border.base,
     overflow: 'hidden',
   },
   txHeader: {
@@ -653,24 +706,18 @@ const styles = StyleSheet.create({
   emptyTxt:  { fontSize: typography.sizes.sm },
 
   // FAB
+  // Anchored to the screen, not to a zero-height wrapper — Android used to
+  // clip the button out of view entirely.
   fabWrapper: {
-    ...StyleSheet.absoluteFillObject,
-    pointerEvents: 'box-none',
+    position: 'absolute',
+    right: spacing.xl,
+    bottom: spacing.xl,
   },
   fab: {
-    position: 'absolute',
-    bottom: spacing.xl,
-    right: spacing.xl,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 54,
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 14,
-    elevation: 10,
   },
 
   // Modal
@@ -685,7 +732,7 @@ const styles = StyleSheet.create({
   modalSheet: {
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    borderWidth: 1,
+    borderWidth: border.base,
     borderBottomWidth: 0,
     padding: spacing.lg,
     gap: spacing.md,
@@ -695,7 +742,7 @@ const styles = StyleSheet.create({
   typeToggle: {
     flexDirection: 'row',
     borderRadius: radius.xl,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: 3,
   },
   typeTab: {
@@ -720,7 +767,7 @@ const styles = StyleSheet.create({
   },
   noteInput: {
     borderRadius: radius.lg,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: spacing.md,
     fontSize: typography.sizes.base,
   },
@@ -736,7 +783,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.xl,
-    borderWidth: 1.5,
+    borderWidth: border.base,
   },
   catChipIcon:  { fontSize: 14 },
   catChipLabel: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },

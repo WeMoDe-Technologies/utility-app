@@ -17,7 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { UtilityHeader } from '@/components/common/UtilityHeader';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useUtilityState } from '@/hooks/useUtilityState';
-import { spacing, radius, typography } from '@/theme';
+import { spacing, radius, typography, border } from '@/theme';
 import type { TextUtilityState } from '@/types';
 
 const DEFAULT_STATE: TextUtilityState = {
@@ -81,7 +81,7 @@ export default function TextUtilityScreen() {
       <UtilityHeader
         title="Text Tools"
         utilityId="textUtility"
-        accentColor="#D946EF"
+        accentColor="#6B4A6E"
         onClearData={clearState}
       />
 
@@ -119,7 +119,7 @@ export default function TextUtilityScreen() {
               { label: 'Sentences', value: stats.sentences },
             ].map(({ label, value }) => (
               <View key={label} style={styles.statItem}>
-                <Text style={[styles.statValue, { color: '#D946EF' }]}>{value}</Text>
+                <Text style={[styles.statValue, { color: '#6B4A6E' }]}>{value}</Text>
                 <Text style={[styles.statLabel, { color: colors.textTertiary }]}>{label}</Text>
               </View>
             ))}
@@ -141,9 +141,9 @@ export default function TextUtilityScreen() {
                   styles.opChip,
                   {
                     backgroundColor:
-                      state.activeOperation === op.id ? '#D946EF' : colors.card,
+                      state.activeOperation === op.id ? '#6B4A6E' : colors.card,
                     borderColor:
-                      state.activeOperation === op.id ? '#D946EF' : colors.border,
+                      state.activeOperation === op.id ? '#6B4A6E' : colors.border,
                   },
                 ]}
               >
@@ -168,12 +168,12 @@ export default function TextUtilityScreen() {
           <Animated.View entering={FadeInDown.delay(50).duration(300)}>
             <View style={styles.outputHeader}>
               <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>OUTPUT</Text>
-              <Pressable onPress={handleCopy} style={[styles.copyBtn, { backgroundColor: '#D946EF20' }]}>
-                <Ionicons name="copy-outline" size={14} color="#D946EF" />
-                <Text style={{ color: '#D946EF', fontSize: 13, fontWeight: '600' }}>Copy</Text>
+              <Pressable onPress={handleCopy} style={[styles.copyBtn, { backgroundColor: '#6B4A6E20' }]}>
+                <Ionicons name="copy-outline" size={14} color="#6B4A6E" />
+                <Text style={{ color: '#6B4A6E', fontSize: 13, fontWeight: '600' }}>Copy</Text>
               </Pressable>
             </View>
-            <View style={[styles.outputBox, { backgroundColor: '#D946EF08', borderColor: '#D946EF30' }]}>
+            <View style={[styles.outputBox, { backgroundColor: '#6B4A6E08', borderColor: '#6B4A6E30' }]}>
               <Text style={[styles.outputText, { color: colors.text }]} selectable>
                 {output}
               </Text>
@@ -202,12 +202,12 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
-    borderRadius: radius.full,
+    borderRadius: radius.sm,
   },
   pasteBtnText: { fontSize: 12, fontWeight: '600' },
   textArea: {
     borderRadius: radius.xl,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: spacing.base,
     minHeight: 120,
     fontSize: 15,
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
   statsBar: {
     flexDirection: 'row',
     borderRadius: radius.lg,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: spacing.md,
     justifyContent: 'space-around',
   },
@@ -227,8 +227,8 @@ const styles = StyleSheet.create({
   opChip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-    borderWidth: 1,
+    borderRadius: radius.sm,
+    borderWidth: border.base,
   },
   opChipText: { fontSize: 13, fontWeight: '600' },
   outputHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs },
@@ -238,11 +238,11 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
-    borderRadius: radius.full,
+    borderRadius: radius.sm,
   },
   outputBox: {
     borderRadius: radius.xl,
-    borderWidth: 1,
+    borderWidth: border.base,
     padding: spacing.base,
     minHeight: 80,
   },

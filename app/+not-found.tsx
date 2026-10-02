@@ -1,7 +1,7 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/theme/ThemeProvider';
-import { spacing, typography } from '@/theme';
+import { spacing, typography, radius, border } from '@/theme';
 
 export default function NotFoundScreen() {
   const { colors } = useTheme();
@@ -31,7 +31,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
-    borderRadius: 999,
+    borderRadius: radius.sm,
   },
   btnText: { color: '#fff', fontWeight: '700', fontSize: typography.sizes.base },
 });

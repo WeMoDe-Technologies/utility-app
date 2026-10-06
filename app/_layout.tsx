@@ -11,6 +11,10 @@ import { ToastHost } from '@/components/ui';
 import { usePreferencesStore } from '@/stores/preferencesStore';
 import { useFavouritesStore } from '@/stores/favouritesStore';
 import { useRecentsStore } from '@/stores/recentsStore';
+import { useUpdatesStore } from '@/stores/updatesStore';
+import { UpdateGate } from '@/components/common';
+import { shouldInterrupt } from '@/update';
+import { currentAppVersion, useUpdateCheck } from '@/update/useUpdateCheck';
 
 // Keep the native splash up until we know which screen to show.
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -19,6 +23,7 @@ export default function RootLayout() {
   const hydratePreferences = usePreferencesStore((s) => s.hydrate);
   const hydrateFavourites  = useFavouritesStore((s) => s.hydrate);
   const hydrateRecents     = useRecentsStore((s) => s.hydrate);
+  const hydrateUpdates     = useUpdatesStore((s) => s.hydrate);
 
   const onboardingCompleted = usePreferencesStore((s) => s.onboardingCompleted);
 
@@ -32,6 +37,7 @@ export default function RootLayout() {
       hydratePreferences(),
       hydrateFavourites(),
       hydrateRecents(),
+      hydrateUpdates(),
     ]).finally(() => setHydrated(true));
   }, []);
 
@@ -70,6 +76,11 @@ export default function RootLayout() {
  */
 function ThemedShell() {
   const { colors, isDark } = useTheme();
+
+  // Mounted here rather than per screen so the check runs once for the whole
+  // app and the gate can sit above every route, including a tool in progress.
+  const update = useUpdateCheck();
+
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -83,6 +94,13 @@ function ThemedShell() {
         <Stack.Screen name="onboarding" options={{ animation: 'fade', gestureEnabled: false }} />
       </Stack>
       <ToastHost />
+      {shouldInterrupt(update.decision) ? (
+        <UpdateGate
+          decision={update.decision}
+          currentVersion={currentAppVersion()}
+          onDismiss={update.dismiss}
+        />
+      ) : null}
     </View>
   );
 }

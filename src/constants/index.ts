@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { Dimensions } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
@@ -13,8 +14,21 @@ export const CARD_SIZE =
 
 // App metadata
 export const APP_NAME = 'Kit';
-export const APP_VERSION = '1.0.0';
-export const APP_BUILD = '1';
+
+/**
+ * Read from the Expo config, which is what a build is actually stamped with.
+ *
+ * This was a hardcoded '1.0.0' sitting next to `version` in app.config.ts —
+ * two sources of truth for the same number. The update gate compares this
+ * against the published manifest, so a bumped config with a stale constant
+ * would have gated the wrong version. The literal remains only as a fallback
+ * for the case where the config is somehow unreadable.
+ */
+export const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+export const APP_BUILD =
+  Constants.expoConfig?.android?.versionCode?.toString() ??
+  Constants.expoConfig?.ios?.buildNumber ??
+  '1';
 
 // Storage
 export const MAX_RECENTS = 20;

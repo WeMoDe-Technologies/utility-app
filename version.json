@@ -1,0 +1,12 @@
+{
+  "latestVersion": "1.0.0",
+  "minimumVersion": "1.0.0",
+  "releaseNotes": "First release. Twenty tools in one offline app, with six themes to choose from.",
+  "downloadUrl": "",
+  "android": {
+    "downloadUrl": "https://play.google.com/store/apps/details?id=com.utilitykit.app"
+  },
+  "ios": {
+    "downloadUrl": ""
+  }
+}

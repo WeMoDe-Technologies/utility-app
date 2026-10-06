@@ -27,8 +27,31 @@ import { CURRENCY_LIST, type CurrencyCode } from '@/utils/format';
 import { APP_NAME, APP_VERSION } from '@/constants';
 import { UTILITY_REGISTRY } from '@/registry';
 import { THEMES } from '@/theme/themes';
+import { useUpdateCheck } from '@/update/useUpdateCheck';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { spacing, radius, typography, border, plate } from '@/theme';
+
+/**
+ * What the Settings row says underneath "Check for updates".
+ *
+ * A build with no manifest URL configured says so plainly rather than
+ * pretending to be up to date — the two are very different, and only one of
+ * them is worth investigating.
+ */
+function updateStatusLine(update: ReturnType<typeof useUpdateCheck>): string {
+  if (!update.configured) return 'Update checking is not configured in this build';
+  if (update.checking) return 'Contacting the update server';
+  const { decision } = update;
+  if (decision.kind === 'none') {
+    return update.checked ? `Version ${APP_VERSION} · up to date` : `Version ${APP_VERSION}`;
+  }
+  if (decision.downloadUrl === null) {
+    return `Version ${decision.version} published, but no download link`;
+  }
+  return decision.kind === 'mandatory'
+    ? `Version ${decision.version} is required`
+    : `Version ${decision.version} is available`;
+}
 
 export default function SettingsScreen() {
   const { colors, isDark, themeId, theme: activeTheme } = useTheme();
@@ -38,6 +61,7 @@ export default function SettingsScreen() {
   const favouriteCount = useFavouritesStore((s) => s.favourites.length);
   const clearRecent = useRecentsStore((s) => s.clearRecent);
   const recentCount = useRecentsStore((s) => s.recents.length);
+  const update = useUpdateCheck();
   const haptic = useHaptic();
 
   const clearAllCache = () => {
@@ -257,6 +281,20 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <SectionLabel title="About" />
           <Card padded={false}>
+            <ActionRow
+              icon="cloud-download-outline" tint="#4C6B3C"
+              label={update.checking ? 'Checking for updates…' : 'Check for updates'}
+              description={updateStatusLine(update)}
+              onPress={async () => {
+                const next = await update.check();
+                // Only speak up when there is nothing to show. When there is,
+                // the gate is already on screen saying it better than a toast.
+                if (next.kind === 'none') toast(`${APP_NAME} ${APP_VERSION} is up to date`);
+              }}
+              colors={colors}
+              disabled={update.checking || !update.configured}
+            />
+            <Rule />
             <ActionRow
               icon="information-circle-outline" tint="#27566B"
               label={`About ${APP_NAME}`}

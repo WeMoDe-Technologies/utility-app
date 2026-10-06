@@ -21,6 +21,7 @@ export const StorageKeys = {
   PREFERENCES: 'preferences',
   FAVOURITES:  'favourites',
   RECENTS:     'recents',
+  UPDATES:     'updates',
   UTILITY_PREFIX: 'utility:',
 } as const;
 
